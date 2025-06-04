@@ -1,0 +1,1 @@
+# agrisync-frontend
