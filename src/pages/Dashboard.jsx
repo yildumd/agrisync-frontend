@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth, db, storage } from "../firebase";
-import { collection, getDocs, addDoc, doc, getDoc, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, addDoc, doc, getDoc, query, where, orderBy, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -14,7 +14,7 @@ const Dashboard = () => {
   const [profilePic, setProfilePic] = useState("");
 
   const [weather, setWeather] = useState(null);
-  const [farmerLocation, setFarmerLocation] = useState("Abuja");
+  const [farmerLocation, setFarmerLocation] = useState("");
   const [voiceInput, setVoiceInput] = useState("");
   const [listening, setListening] = useState(false);
   const [issues, setIssues] = useState([]);
@@ -62,26 +62,117 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, [navigate]);
 
-  // Weather data
+  // Weather data with location detection
   useEffect(() => {
     const fetchWeather = async () => {
-      if (!farmerLocation || !user) return;
       setLoadingWeather(true);
       try {
-        const res = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?q=${farmerLocation}&units=metric&appid=${API_KEY}`
+        // Get user's current location
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 5000,
+            maximumAge: 60000
+          });
+        });
+        
+        const { latitude, longitude } = position.coords;
+        
+        // Reverse geocoding to get location name
+        const locationRes = await fetch(
+          `https://api.openweathermap.org/geo/1.0/reverse?lat=${latitude}&lon=${longitude}&limit=1&appid=${API_KEY}`
         );
-        const data = await res.json();
-        setWeather(data);
+        const locationData = await locationRes.json();
+        const locationName = locationData[0]?.name || "Your location";
+        setFarmerLocation(locationName);
+
+        // Get weather data
+        const weatherRes = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${API_KEY}`
+        );
+        const weatherData = await weatherRes.json();
+        setWeather(weatherData);
+
+        // Update user's location in Firestore if logged in
+        if (user?.uid) {
+          await updateDoc(doc(db, "users", user.uid), {
+            location: locationName
+          });
+        }
       } catch (err) {
-        console.error("Failed to fetch weather:", err);
+        console.error("Error fetching weather:", err);
+        // Fallback to default location if geolocation fails
+        const fallbackRes = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?q=Abuja&units=metric&appid=${API_KEY}`
+        );
+        const fallbackData = await fallbackRes.json();
+        setWeather(fallbackData);
+        setFarmerLocation("Abuja");
       } finally {
         setLoadingWeather(false);
       }
     };
 
     fetchWeather();
-  }, [farmerLocation, user]);
+  }, [user]);
+
+  // Farming advice generator
+  const getFarmingAdvice = (weatherData) => {
+    if (!weatherData) return [];
+    
+    const { main, weather, wind } = weatherData;
+    const conditions = weather[0]?.main.toLowerCase() || "";
+    const description = weather[0]?.description.toLowerCase() || "";
+    const temp = main?.temp || 0;
+    const humidity = main?.humidity || 0;
+    const windSpeed = wind?.speed || 0;
+
+    let advice = [];
+    
+    // Temperature advice
+    if (temp < 10) {
+      advice.push("❄️ Too cold for most crops. Consider cold frames or greenhouses.");
+    } else if (temp > 35) {
+      advice.push("🔥 Extreme heat may stress plants. Water early morning/late evening.");
+    } else if (temp > 25) {
+      advice.push("☀️ Warm weather good for most crops. Ensure adequate watering.");
+    } else {
+      advice.push("🌡️ Moderate temperatures ideal for planting and growth.");
+    }
+
+    // Precipitation advice
+    if (conditions.includes("rain")) {
+      if (description.includes("heavy") || description.includes("shower")) {
+        advice.push("🌧️ Heavy rain expected. Avoid field work and protect young plants.");
+      } else {
+        advice.push("🌦️ Light rain expected. Good for planting and natural irrigation.");
+      }
+    } else if (conditions.includes("clear")) {
+      advice.push("☀️ Clear skies. Ensure adequate irrigation for your crops.");
+    } else if (conditions.includes("cloud")) {
+      advice.push("☁️ Cloudy conditions reduce evaporation. Good for transplanting.");
+    }
+
+    // Wind advice
+    if (windSpeed > 8) {
+      advice.push("💨 High winds expected. Secure structures and protect delicate plants.");
+    } else if (windSpeed > 4) {
+      advice.push("🌬️ Moderate winds. Good for pollination but may dry soil faster.");
+    }
+
+    // Humidity advice
+    if (humidity > 80) {
+      advice.push("💧 High humidity may promote fungal diseases. Monitor crops closely.");
+    } else if (humidity < 30) {
+      advice.push("🏜️ Low humidity increases evaporation. Water more frequently.");
+    }
+
+    // Special conditions
+    if (description.includes("fog") || description.includes("mist")) {
+      advice.push("🌫️ Foggy conditions. Watch for mildew and fungal growth.");
+    }
+
+    return advice;
+  };
 
   // Voice recognition
   const startListening = () => {
@@ -273,7 +364,7 @@ const Dashboard = () => {
             ) : weather ? (
               <div className="flex items-center bg-green-100 rounded-full px-4 py-2 mt-4 md:mt-0">
                 <span className="text-green-800 font-medium">
-                  {weather.weather[0].description}, {weather.main.temp}°C
+                  {farmerLocation}: {weather.main.temp}°C
                 </span>
                 <img 
                   src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}.png`} 
@@ -284,6 +375,62 @@ const Dashboard = () => {
             ) : null}
           </div>
         </section>
+
+        {/* Weather Advisory Section */}
+        {weather && (
+          <section className="mb-8 bg-white rounded-xl shadow-md p-6">
+            <div className="flex items-center mb-4">
+              <div className="bg-yellow-100 p-3 rounded-full mr-4">
+                <span className="text-yellow-600 text-2xl">🌤️</span>
+              </div>
+              <h2 className="text-xl font-semibold">Weather & Farming Advisory</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <span className="text-blue-600 text-xl mr-2">🌡️</span>
+                  <h3 className="font-medium">Temperature</h3>
+                </div>
+                <p className="text-2xl font-bold mt-2">{weather.main.temp}°C</p>
+                <p className="text-sm text-gray-600">
+                  Feels like: {weather.main.feels_like}°C
+                </p>
+              </div>
+
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <span className="text-green-600 text-xl mr-2">💧</span>
+                  <h3 className="font-medium">Humidity</h3>
+                </div>
+                <p className="text-2xl font-bold mt-2">{weather.main.humidity}%</p>
+                <p className="text-sm text-gray-600">
+                  {weather.main.humidity > 70 ? "High" : weather.main.humidity < 30 ? "Low" : "Moderate"} humidity
+                </p>
+              </div>
+
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <span className="text-purple-600 text-xl mr-2">💨</span>
+                  <h3 className="font-medium">Wind</h3>
+                </div>
+                <p className="text-2xl font-bold mt-2">{weather.wind.speed} m/s</p>
+                <p className="text-sm text-gray-600">
+                  {weather.wind.speed > 8 ? "Strong" : weather.wind.speed > 4 ? "Moderate" : "Light"} winds
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 bg-green-50 rounded-lg">
+              <h3 className="font-medium text-green-800 mb-3">Today's Farming Recommendations:</h3>
+              <ul className="list-disc pl-5 space-y-2">
+                {getFarmingAdvice(weather).map((advice, index) => (
+                  <li key={index} className="text-gray-700">{advice}</li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
 
         {/* Tools Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

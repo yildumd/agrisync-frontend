@@ -25,14 +25,6 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
       {/* Hero Section */}
       <div className="relative overflow-hidden h-[70vh]">
-        {/* AgriSync Logo - NEW ADDITION */}
-        <div className="absolute top-6 left-6 z-30">
-          <img 
-            src="https://res.cloudinary.com/dyweczdw2/image/upload/v1749120256/Agrisync_Logo_v8lrij.png" 
-            alt="AgriSync AI Logo" 
-            className="h-12 md:h-16 w-auto"
-          />
-        </div>
 
         {/* Dark overlay */}
         <div className="absolute inset-0 bg-black opacity-40 z-10"></div>
@@ -63,9 +55,9 @@ const Home = () => {
         {/* Hero Content */}
         <div className="absolute inset-0 flex items-center justify-center z-20 px-4">
           <div className="max-w-3xl w-full text-center text-white">
-          <h1 className="text-4xl font-bold text-white mb-4">
-  Welcome to AgriSync AI <span className="text-green-300">🌾</span>
-</h1>
+            <h1 className="text-4xl font-bold text-white mb-4">
+              Welcome to AgriSync AI <span className="text-green-300">🌾</span>
+            </h1>
             <p className="text-xl text-white mb-8">
               Connecting farmers with technology, markets, and solutions for a thriving agricultural future
             </p>
