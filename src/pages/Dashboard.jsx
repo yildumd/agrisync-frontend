@@ -1,16 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth, db, storage } from "../firebase";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  doc,
-  getDoc,
-  query,
-  where,
-  orderBy,
-} from "firebase/firestore";
+import { collection, getDocs, addDoc, doc, getDoc, query, where, orderBy } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -20,6 +11,7 @@ const Dashboard = () => {
   const [userName, setUserName] = useState("");
   const [userRole, setUserRole] = useState("");
   const [loadingUser, setLoadingUser] = useState(true);
+  const [profilePic, setProfilePic] = useState("");
 
   const [weather, setWeather] = useState(null);
   const [farmerLocation, setFarmerLocation] = useState("Abuja");
@@ -41,7 +33,7 @@ const Dashboard = () => {
 
   const API_KEY = "967c8ce2410ebb26a3ba9b630f00e963";
 
-  // 1. Auth & user info
+  // User authentication and data
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -54,6 +46,7 @@ const Dashboard = () => {
             const data = docSnap.data();
             setUserName(data.name || "Farmer");
             setUserRole(data.role || "");
+            setProfilePic(data.photoUrl || "");
             if (data.location) setFarmerLocation(data.location);
             fetchIssues(uid);
           }
@@ -69,7 +62,7 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, [navigate]);
 
-  // 2. Weather
+  // Weather data
   useEffect(() => {
     const fetchWeather = async () => {
       if (!farmerLocation || !user) return;
@@ -90,7 +83,7 @@ const Dashboard = () => {
     fetchWeather();
   }, [farmerLocation, user]);
 
-  // 3. AI Voice Diagnosis
+  // Voice recognition
   const startListening = () => {
     if (!window.webkitSpeechRecognition) {
       alert("Speech recognition not supported in this browser.");
@@ -148,7 +141,7 @@ const Dashboard = () => {
     return "Issue logged. Our agricultural expert will contact you within 24 hours.";
   };
 
-  // 4. Camera and Image Upload
+  // Image processing
   const diagnoseFromImage = (fileName) => {
     if (fileName.toLowerCase().includes("leaf")) {
       return "Leaf appears to show early signs of blight. Recommend copper fungicide.";
@@ -242,116 +235,250 @@ const Dashboard = () => {
     }
   };
 
-  // Final JSX
   return (
-    <div className="max-w-5xl mx-auto mt-10 px-4 text-gray-800">
-      {!loadingUser && user && (
-        <h1 className="text-3xl font-bold text-green-700 mb-6">Welcome, {userName}!</h1>
-      )}
-
-      {/* Weather Info */}
-      <div className="bg-white shadow-md rounded-lg p-5 mb-8">
-        <h2 className="text-xl font-semibold mb-3">🌤️ Weather Update</h2>
-        {loadingWeather ? (
-          <p>Loading weather...</p>
-        ) : weather ? (
-          <p>
-            {weather.name}: {weather.weather[0].description}, {weather.main.temp}°C
-          </p>
-        ) : (
-          <p>Weather info not available.</p>
-        )}
-      </div>
-
-      {/* Voice Assistant */}
-      <div className="bg-white shadow-md rounded-lg p-5 mb-8">
-        <h2 className="text-xl font-semibold mb-3">🎙️ Voice Diagnosis</h2>
-        <button
-          onClick={startListening}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          {listening ? "Listening..." : "Start Speaking"}
-        </button>
-        {voiceInput && (
-          <p className="mt-2">You said: <strong>{voiceInput}</strong></p>
-        )}
-        {aiResponse && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
-            <p className="font-medium">🧠 AI Response:</p>
-            <p>{aiResponse}</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-green-700 text-white p-4 shadow-md">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold">AgriSync AI Dashboard</h1>
+          <div className="flex items-center space-x-4">
+            {profilePic && (
+              <img 
+                src={profilePic} 
+                alt="Profile" 
+                className="w-10 h-10 rounded-full border-2 border-white"
+              />
+            )}
+            <span className="font-medium">{userName}</span>
           </div>
-        )}
-      </div>
+        </div>
+      </header>
 
-      {/* Snap & Diagnose Section */}
-      <div className="bg-white shadow-md rounded-lg p-5 mb-8">
-        <h2 className="text-xl font-semibold mb-2">📷 Snap & Diagnose</h2>
+      <main className="max-w-6xl mx-auto py-6 px-4">
+        {/* Welcome Section */}
+        <section className="mb-8 bg-white rounded-xl shadow-md p-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-green-800 mb-2">
+                Welcome back, {userName}!
+              </h2>
+              <p className="text-gray-600">
+                {userRole === "farmer" 
+                  ? "Get personalized farming advice and connect with buyers"
+                  : "Browse fresh produce and connect directly with farmers"}
+              </p>
+            </div>
+            {loadingWeather ? (
+              <div className="animate-pulse bg-gray-200 rounded-full px-4 py-2 w-32 h-10 mt-4 md:mt-0"></div>
+            ) : weather ? (
+              <div className="flex items-center bg-green-100 rounded-full px-4 py-2 mt-4 md:mt-0">
+                <span className="text-green-800 font-medium">
+                  {weather.weather[0].description}, {weather.main.temp}°C
+                </span>
+                <img 
+                  src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}.png`} 
+                  alt="Weather icon"
+                  className="w-8 h-8 ml-2"
+                />
+              </div>
+            ) : null}
+          </div>
+        </section>
 
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setImageFile(e.target.files[0])}
-          className="mb-3"
-        />
-
-        {!cameraOn ? (
-          <button onClick={startCamera} className="px-4 py-2 bg-gray-800 text-white rounded">
-            Open Camera
-          </button>
-        ) : (
-          <div>
-            <video ref={videoRef} autoPlay className="w-full max-w-md mb-2 rounded" />
-            <button onClick={captureImage} className="px-4 py-2 bg-green-600 text-white rounded mr-2">
-              Capture
+        {/* Tools Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Voice Diagnosis Card */}
+          <section className="bg-white rounded-xl shadow-md p-6">
+            <div className="flex items-center mb-4">
+              <div className="bg-blue-100 p-3 rounded-full mr-4">
+                <span className="text-blue-600 text-2xl">🎤</span>
+              </div>
+              <h2 className="text-xl font-semibold">Voice Diagnosis</h2>
+            </div>
+            
+            <p className="text-gray-600 mb-4">
+              Describe your crop issues with your voice and get instant AI-powered solutions.
+            </p>
+            
+            <button
+              onClick={startListening}
+              disabled={listening}
+              className={`px-6 py-3 rounded-lg font-medium w-full flex items-center justify-center ${
+                listening 
+                  ? "bg-blue-400 cursor-not-allowed" 
+                  : "bg-blue-600 hover:bg-blue-700"
+              } text-white transition-colors`}
+            >
+              {listening ? (
+                <>
+                  <span className="animate-pulse mr-2">🔴</span> Listening...
+                </>
+              ) : (
+                "Start Speaking"
+              )}
             </button>
-            <button onClick={stopCamera} className="px-4 py-2 bg-red-600 text-white rounded">
-              Stop
+            
+            {voiceInput && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="font-medium text-blue-800">You said:</p>
+                <p className="text-gray-800">{voiceInput}</p>
+              </div>
+            )}
+            
+            {aiResponse && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-start">
+                  <span className="text-green-600 mr-2">🌱</span>
+                  <div>
+                    <p className="font-medium text-green-800">AI Response:</p>
+                    <p className="text-gray-800">{aiResponse}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Image Diagnosis Card */}
+          <section className="bg-white rounded-xl shadow-md p-6">
+            <div className="flex items-center mb-4">
+              <div className="bg-purple-100 p-3 rounded-full mr-4">
+                <span className="text-purple-600 text-2xl">📷</span>
+              </div>
+              <h2 className="text-xl font-semibold">Image Diagnosis</h2>
+            </div>
+            
+            <p className="text-gray-600 mb-4">
+              Upload or capture an image of your crops for instant analysis.
+            </p>
+            
+            {!cameraOn ? (
+              <div className="space-y-4">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files[0])}
+                  className="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-lg file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-green-50 file:text-green-700
+                    hover:file:bg-green-100"
+                />
+                
+                <button 
+                  onClick={startCamera}
+                  className="px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-medium w-full"
+                >
+                  Open Camera
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  className="w-full h-48 object-cover rounded-lg border border-gray-200"
+                />
+                
+                <div className="flex space-x-3">
+                  <button 
+                    onClick={captureImage}
+                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                  >
+                    Capture
+                  </button>
+                  <button 
+                    onClick={stopCamera}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <canvas ref={canvasRef} style={{ display: "none" }} />
+            
+            <button
+              onClick={handleImageUpload}
+              disabled={!imageFile || uploading}
+              className={`mt-4 px-6 py-3 rounded-lg font-medium w-full ${
+                !imageFile || uploading
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
+              } text-white transition-colors`}
+            >
+              {uploading ? "Uploading..." : "Upload & Diagnose"}
             </button>
+            
+            {imageResponse && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-start">
+                  <span className="text-green-600 mr-2">🌿</span>
+                  <div>
+                    <p className="font-medium text-green-800">AI Diagnosis:</p>
+                    <p className="text-gray-800">{imageResponse}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Recent Reports */}
+        <section className="bg-white rounded-xl shadow-md p-6">
+          <div className="flex items-center mb-6">
+            <div className="bg-orange-100 p-3 rounded-full mr-4">
+              <span className="text-orange-600 text-2xl">📋</span>
+            </div>
+            <h2 className="text-xl font-semibold">Recent Reports</h2>
           </div>
-        )}
-
-        <canvas ref={canvasRef} style={{ display: "none" }} />
-
-        <button
-          onClick={handleImageUpload}
-          disabled={!imageFile || uploading}
-          className="mt-3 px-4 py-2 bg-green-700 text-white rounded"
-        >
-          {uploading ? "Uploading..." : "Upload & Diagnose"}
-        </button>
-
-        {imageResponse && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
-            <p className="font-medium">🧠 AI Diagnosis:</p>
-            <p>{imageResponse}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Previous Reports */}
-      <div className="bg-white shadow-md rounded-lg p-5 mb-8">
-        <h2 className="text-xl font-semibold mb-3">📝 Previous Reports</h2>
-        {loadingIssues ? (
-          <p>Loading reports...</p>
-        ) : issues.length > 0 ? (
-          <ul className="space-y-2">
-            {issues.map((issue) => (
-              <li key={issue.id} className="border-b pb-2">
-                <p><strong>Issue:</strong> {issue.message}</p>
-                <p><strong>AI Response:</strong> {issue.response}</p>
-                {issue.imageUrl && (
-                  <img src={issue.imageUrl} alt="Uploaded" className="w-32 mt-2" />
-                )}
-                <p className="text-sm text-gray-500">
-                  {new Date(issue.timestamp?.seconds * 1000).toLocaleString()}
-                </p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No reports found yet.</p>
-        )}
-      </div>
+          
+          {loadingIssues ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-green-600"></div>
+            </div>
+          ) : issues.length > 0 ? (
+            <div className="space-y-4">
+              {issues.slice(0, 5).map((issue) => (
+                <div key={issue.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-medium text-gray-800">
+                        {issue.message || "Image diagnosis"}
+                      </h3>
+                      <p className="text-gray-600 mt-1">{issue.response}</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {new Date(issue.timestamp?.seconds * 1000).toLocaleString()}
+                      </p>
+                    </div>
+                    {issue.imageUrl && (
+                      <img 
+                        src={issue.imageUrl} 
+                        alt="Crop issue" 
+                        className="w-16 h-16 object-cover rounded-lg ml-4"
+                      />
+                    )}
+                  </div>
+                </div>
+              ))}
+              {issues.length > 5 && (
+                <Link 
+                  to="/reports" 
+                  className="block text-center text-green-600 hover:text-green-800 mt-4"
+                >
+                  View all reports →
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No reports found yet.</p>
+              <p className="text-gray-400 mt-2">Use voice or image diagnosis to create your first report</p>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 };
