@@ -1,15 +1,28 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
+import { signOut } from "firebase/auth";
+import { auth } from "../firebase";
 
 const BuyerDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Added logout function
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate("/login");
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -48,7 +61,7 @@ const BuyerDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Dashboard Header */}
+        {/* Dashboard Header - Only added logout button here */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
@@ -60,7 +73,7 @@ const BuyerDashboard = () => {
           </div>
           
           <div className="mt-4 md:mt-0 w-full md:w-auto">
-            <div className="relative">
+            <div className="relative flex items-center space-x-4">
               <input
                 type="text"
                 placeholder="Search orders..."
@@ -68,23 +81,32 @@ const BuyerDashboard = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <svg
-                className="absolute right-3 top-2.5 h-5 w-5 text-gray-400"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
+              {/* Added logout button */}
+              <button
+                onClick={handleLogout}
+                className="hidden md:flex items-center text-gray-600 hover:text-gray-900"
+                title="Logout"
               >
-                <path
-                  fillRule="evenodd"
-                  d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                  clipRule="evenodd"
-                />
-              </svg>
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  className="h-6 w-6" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" 
+                  />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Dashboard Tabs */}
+        {/* Rest of your original code remains exactly the same */}
         <div className="flex border-b border-gray-200 mb-6">
           <button
             className={`px-4 py-2 font-medium text-sm ${
@@ -118,7 +140,6 @@ const BuyerDashboard = () => {
           </button>
         </div>
 
-        {/* Dashboard Content */}
         {activeTab === "orders" && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -267,7 +288,6 @@ const BuyerDashboard = () => {
           </div>
         )}
 
-        {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
             to="/marketplace"
