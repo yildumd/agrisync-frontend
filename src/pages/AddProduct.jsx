@@ -11,6 +11,7 @@ const AddProduct = () => {
   const [loading, setLoading] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
 
   const [product, setProduct] = useState({
     name: "",
@@ -34,6 +35,15 @@ const AddProduct = () => {
     return () => unsubscribe();
   }, [navigate]);
 
+  // Clean up preview URL
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -47,25 +57,58 @@ const AddProduct = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate image type and size (e.g., 5MB max)
+      if (!file.type.match("image.*")) {
+        setError("Please select an image file");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Image size should be less than 5MB");
+        return;
+      }
+      
+      setError("");
       setImageFile(file);
       setPreview(URL.createObjectURL(file));
     }
   };
 
+  // Validate phone number
+  const validatePhone = (phone) => {
+    const phoneRegex = /^[0-9]{11}$/; // Adjust based on your country's format
+    return phoneRegex.test(phone);
+  };
+
   // Submit product to Firestore
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
     const { name, price, category, quantity, location, description, phone } = product;
 
-    // Basic validation
+    // Validation
     if (!name || !price || !category || !quantity || !location || !phone || !imageFile) {
-      alert("Please fill all required fields and select an image.");
+      setError("Please fill all required fields and select an image.");
+      return;
+    }
+
+    if (parseFloat(price) <= 0 || isNaN(parseFloat(price))) {
+      setError("Please enter a valid price");
+      return;
+    }
+
+    if (parseInt(quantity, 10) <= 0 || isNaN(parseInt(quantity, 10))) {
+      setError("Please enter a valid quantity");
+      return;
+    }
+
+    if (!validatePhone(phone)) {
+      setError("Please enter a valid phone number");
       return;
     }
 
     if (!user?.uid) {
-      alert("User not authenticated.");
+      setError("User not authenticated.");
       return;
     }
 
@@ -73,9 +116,10 @@ const AddProduct = () => {
 
     try {
       // Upload image to Cloudinary
-      console.log("🔄 Uploading image to Cloudinary...");
       const imageUrl = await uploadToCloudinary(imageFile);
-      console.log("✅ Image uploaded:", imageUrl);
+      if (!imageUrl) {
+        throw new Error("Image upload failed");
+      }
 
       // Format product data
       const newProduct = {
@@ -88,18 +132,16 @@ const AddProduct = () => {
         description: description?.trim() || "",
         image: imageUrl,
         sellerId: user.uid,
-        sellerName: user.displayName || user.name || "Unknown Seller",
+        sellerName: user.displayName || "Unknown Seller",
         sellerEmail: user.email || "unknown",
         sellerPhotoUrl: user.photoURL || "",
         timestamp: serverTimestamp(),
       };
 
       // Add to Firestore
-      console.log("📦 Saving product to Firestore...");
       await addDoc(collection(db, "products"), newProduct);
-      console.log("✅ Product added successfully!");
 
-      alert("✅ Product added successfully!");
+      // Reset form
       setProduct({
         name: "",
         price: "",
@@ -110,11 +152,15 @@ const AddProduct = () => {
         phone: "",
       });
       setImageFile(null);
-      setPreview(null);
+      if (preview) {
+        URL.revokeObjectURL(preview);
+        setPreview(null);
+      }
+      
       navigate("/marketplace");
     } catch (err) {
-      console.error("🔥 Error adding product:", err.message, err);
-      alert("❌ Error adding product. Check console for details.");
+      console.error("Error adding product:", err);
+      setError(err.message || "Error adding product. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -123,6 +169,11 @@ const AddProduct = () => {
   return (
     <div className="max-w-xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold text-green-700 mb-6">Add New Product</h2>
+      {error && (
+        <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">
+          {error}
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           type="text"
@@ -177,9 +228,10 @@ const AddProduct = () => {
           name="phone"
           value={product.phone}
           onChange={handleChange}
-          placeholder="Your Phone Number"
+          placeholder="Your Phone Number (11 digits)"
           required
           className="w-full p-2 border rounded"
+          pattern="[0-9]{11}"
         />
         <textarea
           name="description"
@@ -189,20 +241,25 @@ const AddProduct = () => {
           rows="3"
           className="w-full p-2 border rounded"
         />
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageChange}
-          required
-          className="w-full p-2 border rounded"
-        />
-        {preview && (
-          <img
-            src={preview}
-            alt="Preview"
-            className="w-32 h-32 object-cover mt-2 border rounded"
+        <div>
+          <label className="block mb-1 text-sm font-medium text-gray-700">
+            Product Image (required)
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            required
+            className="w-full p-2 border rounded"
           />
-        )}
+          {preview && (
+            <img
+              src={preview}
+              alt="Preview"
+              className="w-32 h-32 object-cover mt-2 border rounded"
+            />
+          )}
+        </div>
         <button
           type="submit"
           disabled={loading}
