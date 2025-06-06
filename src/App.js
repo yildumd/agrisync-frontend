@@ -14,8 +14,10 @@ import BuyerDashboard from "./pages/BuyerDashboard";
 import FarmerDashboard from "./pages/FarmerDashboard";
 import AdminPanel from "./components/AdminPanel";
 import Dashboard from "./pages/Dashboard";
-import ChatPage from "./pages/ChatPage";       // ✅ Chat window
-import ChatInbox from "./pages/ChatInbox";     // ✅ Chat list
+import OrdersPage from "./pages/OrdersPage"; // ✅ NEW IMPORT
+import ChatPage from "./pages/ChatPage";
+import ChatInbox from "./pages/ChatInbox";
+import MessagesPage from "./pages/MessagesPage"; // ✅ NEW IMPORT
 
 // Route Guards
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -56,9 +58,13 @@ const AppRoutes = () => {
       <Route path="/dashboard/buyer" element={user && role === "buyer" ? <BuyerDashboard /> : <Navigate to="/login" />} />
       <Route path="/admin" element={user && role === "admin" ? <AdminPanel /> : <Navigate to="/login" />} />
 
-      {/* Chat Routes */}
-      <Route path="/inbox" element={user ? <ChatInbox /> : <Navigate to="/login" />} />  {/* ✅ Chat list */}
-      <Route path="/chat/:chatId" element={user ? <ChatPage /> : <Navigate to="/login" />} />  {/* ✅ Chat window */}
+      {/* ✅ Orders Page for all logged-in users */}
+      <Route path="/orders" element={user ? <OrdersPage /> : <Navigate to="/login" />} />
+
+      {/* ✅ Chat Routes */}
+      <Route path="/inbox" element={user ? <ChatInbox /> : <Navigate to="/login" />} />
+      <Route path="/chat/:chatId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
+      <Route path="/messages" element={user ? <MessagesPage /> : <Navigate to="/login" />} /> {/* ✅ NEW ROUTE */}
 
       {/* Other */}
       <Route path="/verify-email" element={<div>Please verify your email to access this page.</div>} />
