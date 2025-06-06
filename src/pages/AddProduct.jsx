@@ -5,6 +5,55 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import uploadToCloudinary from "../components/uploadToCloudinary";
 
+// Product categories data
+const productCategories = [
+  "Grains & Cereals",
+  "Fruits",
+  "Vegetables",
+  "Livestock",
+  "Dairy Products",
+  "Poultry",
+  "Seafood",
+  "Nuts & Seeds",
+  "Spices & Herbs",
+  "Tubers",
+  "Legumes",
+  "Processed Foods",
+  "Organic Products",
+  "Farm Equipment",
+  "Fertilizers",
+  "Seeds & Seedlings",
+  "Other"
+];
+
+// African countries and states data
+const africanCountries = [
+  { 
+    name: "Nigeria", 
+    states: [
+      "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", 
+      "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", 
+      "Ekiti", "Enugu", "Federal Capital Territory", "Gombe", "Imo", 
+      "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", 
+      "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", 
+      "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara"
+    ]
+  },
+  { 
+    name: "Ghana", 
+    states: [
+      "Ahafo", "Ashanti", "Bono", "Bono East", "Central", "Eastern", 
+      "Greater Accra", "North East", "Northern", "Oti", "Savannah", 
+      "Upper East", "Upper West", "Volta", "Western", "Western North"
+    ]
+  },
+  // Add more countries as needed...
+  { name: "Kenya", states: [] },
+  { name: "South Africa", states: [] },
+  { name: "Ethiopia", states: [] },
+  // ...other African countries
+];
+
 const AddProduct = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -12,6 +61,8 @@ const AddProduct = () => {
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState("");
+  const [availableStates, setAvailableStates] = useState([]);
 
   const [product, setProduct] = useState({
     name: "",
@@ -19,7 +70,8 @@ const AddProduct = () => {
     description: "",
     category: "",
     quantity: "",
-    location: "",
+    country: "",
+    state: "",
     phone: "",
   });
 
@@ -44,6 +96,16 @@ const AddProduct = () => {
     };
   }, [preview]);
 
+  // Handle country selection
+  const handleCountryChange = (e) => {
+    const countryName = e.target.value;
+    setSelectedCountry(countryName);
+    setProduct(prev => ({ ...prev, country: countryName, state: "" }));
+    
+    const country = africanCountries.find(c => c.name === countryName);
+    setAvailableStates(country?.states || []);
+  };
+
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -57,7 +119,6 @@ const AddProduct = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate image type and size (e.g., 5MB max)
       if (!file.type.match("image.*")) {
         setError("Please select an image file");
         return;
@@ -75,7 +136,7 @@ const AddProduct = () => {
 
   // Validate phone number
   const validatePhone = (phone) => {
-    const phoneRegex = /^[0-9]{11}$/; // Adjust based on your country's format
+    const phoneRegex = /^[0-9]{11}$/;
     return phoneRegex.test(phone);
   };
 
@@ -84,10 +145,10 @@ const AddProduct = () => {
     e.preventDefault();
     setError("");
 
-    const { name, price, category, quantity, location, description, phone } = product;
+    const { name, price, category, quantity, country, state, phone, description } = product;
 
     // Validation
-    if (!name || !price || !category || !quantity || !location || !phone || !imageFile) {
+    if (!name || !price || !category || !quantity || !country || !phone || !imageFile) {
       setError("Please fill all required fields and select an image.");
       return;
     }
@@ -103,7 +164,7 @@ const AddProduct = () => {
     }
 
     if (!validatePhone(phone)) {
-      setError("Please enter a valid phone number");
+      setError("Please enter a valid phone number (11 digits)");
       return;
     }
 
@@ -126,8 +187,9 @@ const AddProduct = () => {
         name: name.trim(),
         price: parseFloat(price),
         quantity: parseInt(quantity, 10),
-        category: category.trim().toLowerCase(),
-        location: location.trim(),
+        category: category.trim(),
+        country: country.trim(),
+        state: state.trim(),
         phone: phone.trim(),
         description: description?.trim() || "",
         image: imageUrl,
@@ -135,7 +197,9 @@ const AddProduct = () => {
         sellerName: user.displayName || "Unknown Seller",
         sellerEmail: user.email || "unknown",
         sellerPhotoUrl: user.photoURL || "",
-        timestamp: serverTimestamp(),
+        status: "available", // Add status field
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
 
       // Add to Firestore
@@ -148,10 +212,13 @@ const AddProduct = () => {
         description: "",
         category: "",
         quantity: "",
-        location: "",
+        country: "",
+        state: "",
         phone: "",
       });
       setImageFile(null);
+      setSelectedCountry("");
+      setAvailableStates([]);
       if (preview) {
         URL.revokeObjectURL(preview);
         setPreview(null);
@@ -184,45 +251,83 @@ const AddProduct = () => {
           required
           className="w-full p-2 border rounded"
         />
-        <input
-          type="number"
-          name="price"
-          value={product.price}
-          onChange={handleChange}
-          placeholder="Price per KG (₦)"
-          required
-          className="w-full p-2 border rounded"
-          min="0"
-          step="0.01"
-        />
-        <input
-          type="number"
-          name="quantity"
-          value={product.quantity}
-          onChange={handleChange}
-          placeholder="Quantity in KG"
-          required
-          className="w-full p-2 border rounded"
-          min="1"
-        />
-        <input
-          type="text"
+        
+        <div className="grid grid-cols-2 gap-4">
+          <input
+            type="number"
+            name="price"
+            value={product.price}
+            onChange={handleChange}
+            placeholder="Price per KG (₦)"
+            required
+            className="w-full p-2 border rounded"
+            min="0"
+            step="0.01"
+          />
+          <input
+            type="number"
+            name="quantity"
+            value={product.quantity}
+            onChange={handleChange}
+            placeholder="Quantity in KG"
+            required
+            className="w-full p-2 border rounded"
+            min="1"
+          />
+        </div>
+
+        <select
           name="category"
           value={product.category}
           onChange={handleChange}
-          placeholder="Category (e.g., maize)"
           required
           className="w-full p-2 border rounded"
-        />
-        <input
-          type="text"
-          name="location"
-          value={product.location}
-          onChange={handleChange}
-          placeholder="Location (e.g., Kaduna)"
-          required
-          className="w-full p-2 border rounded"
-        />
+        >
+          <option value="">Select Category</option>
+          {productCategories.map((cat) => (
+            <option key={cat} value={cat}>{cat}</option>
+          ))}
+        </select>
+
+        <div className="grid grid-cols-2 gap-4">
+          <select
+            name="country"
+            value={selectedCountry}
+            onChange={handleCountryChange}
+            required
+            className="w-full p-2 border rounded"
+          >
+            <option value="">Select Country</option>
+            {africanCountries.map((country) => (
+              <option key={country.name} value={country.name}>{country.name}</option>
+            ))}
+          </select>
+
+          {availableStates.length > 0 ? (
+            <select
+              name="state"
+              value={product.state}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded"
+            >
+              <option value="">Select State/Region</option>
+              {availableStates.map((state) => (
+                <option key={state} value={state}>{state}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              name="state"
+              value={product.state}
+              onChange={handleChange}
+              placeholder="State/Region"
+              className="w-full p-2 border rounded"
+            />
+          )}
+        </div>
+
         <input
           type="tel"
           name="phone"
@@ -233,6 +338,7 @@ const AddProduct = () => {
           className="w-full p-2 border rounded"
           pattern="[0-9]{11}"
         />
+        
         <textarea
           name="description"
           value={product.description}
@@ -241,6 +347,7 @@ const AddProduct = () => {
           rows="3"
           className="w-full p-2 border rounded"
         />
+        
         <div>
           <label className="block mb-1 text-sm font-medium text-gray-700">
             Product Image (required)
@@ -260,6 +367,7 @@ const AddProduct = () => {
             />
           )}
         </div>
+        
         <button
           type="submit"
           disabled={loading}
