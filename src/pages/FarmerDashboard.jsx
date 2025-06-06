@@ -13,6 +13,10 @@ const FarmerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [productCount, setProductCount] = useState(0);
   const [recentProducts, setRecentProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [newProfilePic, setNewProfilePic] = useState(null);
+  const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
 
   // Weather states
   const [weather, setWeather] = useState(null);
@@ -52,6 +56,8 @@ const FarmerDashboard = () => {
           fetchFarmerProducts(currentUser.uid);
           // Fetch issues
           fetchIssues(currentUser.uid);
+          // Fetch orders
+          fetchOrders(currentUser.uid);
         } catch (error) {
           console.error("Error loading data:", error);
         }
@@ -137,6 +143,26 @@ const FarmerDashboard = () => {
     }
   };
 
+  // Fetch orders
+  const fetchOrders = async (userId) => {
+    try {
+      const q = query(
+        collection(db, "orders"),
+        where("sellerId", "==", userId),
+        orderBy("createdAt", "desc")
+      );
+      const snapshot = await getDocs(q);
+      const ordersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        formattedDate: new Date(doc.data().createdAt?.seconds * 1000).toLocaleDateString()
+      }));
+      setOrders(ordersData);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+    }
+  };
+
   // Fetch issues
   const fetchIssues = async (uid) => {
     try {
@@ -153,6 +179,79 @@ const FarmerDashboard = () => {
       setIssues(fetched);
     } catch (error) {
       console.error("Error fetching issues:", error);
+    }
+  };
+
+  // Update profile picture
+  const updateProfilePicture = async () => {
+    if (!newProfilePic || !user) return;
+    setUploadingProfilePic(true);
+    
+    try {
+      // Upload to Cloudinary
+      const cloudinaryData = new FormData();
+      cloudinaryData.append("file", newProfilePic);
+      cloudinaryData.append("upload_preset", "agrisync_upload");
+
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/dyweczdw2/image/upload",
+        {
+          method: "POST",
+          body: cloudinaryData,
+        }
+      );
+
+      if (!res.ok) throw new Error("Photo upload failed");
+
+      const cloudinaryRes = await res.json();
+      const photoUrl = cloudinaryRes.secure_url;
+
+      // Update Firestore
+      await updateDoc(doc(db, "users", user.uid), {
+        photoUrl: photoUrl
+      });
+
+      // Update local state
+      setProfilePic(photoUrl);
+      setShowProfileModal(false);
+      setNewProfilePic(null);
+    } catch (error) {
+      console.error("Error updating profile picture:", error);
+      alert("Failed to update profile picture");
+    } finally {
+      setUploadingProfilePic(false);
+    }
+  };
+
+  // Advanced AI Diagnosis using Plant.id API
+  const diagnoseWithPlantId = async (imageFile) => {
+    try {
+      const formData = new FormData();
+      formData.append("images", imageFile);
+      formData.append("key", "	https://crop.kindwise.com/api/v1"); // Replace with your actual API key
+
+      const response = await fetch("https://api.plant.id/v2/identify", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) throw new Error("AI diagnosis failed");
+
+      const data = await response.json();
+      
+      if (data.suggestions && data.suggestions.length > 0) {
+        const topSuggestion = data.suggestions[0];
+        const diseaseInfo = topSuggestion.diseases && topSuggestion.diseases.length > 0 
+          ? `Possible disease: ${topSuggestion.diseases[0].name}. ${topSuggestion.diseases[0].treatment.prevention.join(" ")}`
+          : "No diseases detected.";
+        
+        return `Identified as ${topSuggestion.plant_name} (${Math.round(topSuggestion.probability * 100)}% match). ${diseaseInfo}`;
+      }
+      
+      return "Plant identification completed but no specific matches found.";
+    } catch (error) {
+      console.error("Plant.id API error:", error);
+      return "Advanced analysis failed. Falling back to basic diagnosis.";
     }
   };
 
@@ -177,7 +276,7 @@ const FarmerDashboard = () => {
       }
 
       setVoiceInput(spokenText);
-      const diagnosis = diagnoseIssue(spokenText);
+      const diagnosis = await diagnoseIssue(spokenText);
       setAiResponse(diagnosis);
       setListening(false);
 
@@ -202,35 +301,61 @@ const FarmerDashboard = () => {
     };
   };
 
-  const diagnoseIssue = (text) => {
-    const lower = text.toLowerCase();
-    if (lower.includes("yellow")) return "Check for nitrogen deficiency. Apply balanced fertilizer.";
-    if (lower.includes("blight")) return "Apply copper-based fungicide. Remove affected leaves immediately.";
-    if (lower.includes("wilt")) return "Check soil moisture. Improve drainage if waterlogged.";
-    if (lower.includes("bug") || lower.includes("insect")) return "Apply neem oil solution. Introduce beneficial insects.";
-    return "Issue logged. Our agricultural expert will contact you within 24 hours.";
+  const diagnoseIssue = async (text) => {
+    try {
+      // First try with Plant.id API (for voice)
+      const response = await fetch("https://api.plant.id/v2/health_assessment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Api-Key": "YOUR_PLANT_ID_API_KEY" // Replace with your actual API key
+        },
+        body: JSON.stringify({
+          description: text,
+          latitude: 0, // You can get these from geolocation
+          longitude: 0,
+          similar_images: true
+        })
+      });
+
+      if (!response.ok) throw new Error("AI diagnosis failed");
+
+      const data = await response.json();
+      
+      if (data.health_assessment && data.health_assessment.length > 0) {
+        const assessment = data.health_assessment[0];
+        return `Possible issue: ${assessment.disease.name}. Recommendation: ${assessment.disease.treatment.prevention.join(" ")}`;
+      }
+      
+      // Fallback to basic diagnosis if API fails
+      const lower = text.toLowerCase();
+      if (lower.includes("yellow")) return "Check for nitrogen deficiency. Apply balanced fertilizer.";
+      if (lower.includes("blight")) return "Apply copper-based fungicide. Remove affected leaves immediately.";
+      if (lower.includes("wilt")) return "Check soil moisture. Improve drainage if waterlogged.";
+      if (lower.includes("bug") || lower.includes("insect")) return "Apply neem oil solution. Introduce beneficial insects.";
+      return "Issue logged. Our agricultural expert will contact you within 24 hours.";
+    } catch (error) {
+      console.error("AI diagnosis error:", error);
+      return "Our AI assistant is currently unavailable. Your issue has been logged and an expert will contact you shortly.";
+    }
   };
 
   // Image processing
-  const diagnoseFromImage = (fileName) => {
-    if (fileName.toLowerCase().includes("leaf")) {
-      return "Leaf appears to show early signs of blight. Recommend copper fungicide.";
-    }
-    return "Image received. Our AI assistant is analyzing and will update shortly.";
-  };
-
   const handleImageUpload = async () => {
     if (!imageFile || !user) return;
     setUploading(true);
     try {
+      // First upload to storage
       const imageRef = ref(storage, `crop_images/${user.uid}/${Date.now()}_${imageFile.name}`);
       const snapshot = await uploadBytes(imageRef, imageFile);
       const downloadURL = await getDownloadURL(snapshot.ref);
       setImageUrl(downloadURL);
 
-      const aiAnalysis = diagnoseFromImage(imageFile.name);
+      // Get diagnosis from Plant.id API
+      const aiAnalysis = await diagnoseWithPlantId(imageFile);
       setImageResponse(aiAnalysis);
 
+      // Save to database
       await addDoc(collection(db, "issues"), {
         imageUrl: downloadURL,
         response: aiAnalysis,
@@ -245,6 +370,7 @@ const FarmerDashboard = () => {
       setImageFile(null);
     } catch (error) {
       console.error("Error uploading image:", error);
+      setImageResponse("Error processing image. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -258,6 +384,7 @@ const FarmerDashboard = () => {
       setCameraOn(true);
     } catch (err) {
       console.error("Error accessing camera:", err);
+      alert("Could not access camera. Please check permissions.");
     }
   };
 
@@ -347,13 +474,23 @@ const FarmerDashboard = () => {
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold">Farmer Dashboard</h1>
           <div className="flex items-center space-x-4">
-            {profilePic && (
-              <img 
-                src={profilePic} 
-                alt="Profile" 
-                className="w-10 h-10 rounded-full border-2 border-white"
-              />
-            )}
+            <div className="relative">
+              {profilePic ? (
+                <img 
+                  src={profilePic} 
+                  alt="Profile" 
+                  className="w-10 h-10 rounded-full border-2 border-white cursor-pointer"
+                  onClick={() => setShowProfileModal(true)}
+                />
+              ) : (
+                <div 
+                  className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer"
+                  onClick={() => setShowProfileModal(true)}
+                >
+                  <span className="text-gray-600 text-lg">{userName.charAt(0)}</span>
+                </div>
+              )}
+            </div>
             <span className="font-medium">{userName}</span>
             <button 
               onClick={handleLogout}
@@ -364,6 +501,46 @@ const FarmerDashboard = () => {
           </div>
         </div>
       </header>
+
+      {/* Profile Picture Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Update Profile Picture</h3>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setNewProfilePic(e.target.files[0])}
+              className="mb-4"
+            />
+            {newProfilePic && (
+              <img 
+                src={URL.createObjectURL(newProfilePic)} 
+                alt="Preview" 
+                className="w-32 h-32 object-cover rounded-full mx-auto mb-4"
+              />
+            )}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowProfileModal(false);
+                  setNewProfilePic(null);
+                }}
+                className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateProfilePicture}
+                disabled={!newProfilePic || uploadingProfilePic}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
+              >
+                {uploadingProfilePic ? "Uploading..." : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto py-6 px-4">
         {/* Welcome Section */}
@@ -413,41 +590,36 @@ const FarmerDashboard = () => {
               </div>
             </div>
             <Link
-              to="/marketplace/add"
+              to="/add-product"
               className="mt-4 inline-block text-green-600 hover:text-green-800 text-sm font-medium"
             >
               Add new product →
             </Link>
           </div>
 
-          {/* Weather Advisory Card */}
-          {weather && (
-            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-700 mb-1">Weather Advisory</h2>
-                  {loadingWeather ? (
-                    <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
-                  ) : (
-                    <p className="text-xl font-bold text-blue-600 capitalize">
-                      {weather.weather[0].description}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-500 mt-1">{farmerLocation}</p>
-                </div>
-                <div className="bg-blue-100 p-3 rounded-full">
-                  <span className="text-blue-600 text-xl">
-                    {weather.weather[0].icon.includes('d') ? '☀️' : '🌙'}
-                  </span>
-                </div>
+          {/* Orders Card */}
+          <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-orange-500 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-700 mb-1">Recent Orders</h2>
+                {loading ? (
+                  <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
+                ) : (
+                  <p className="text-3xl font-bold text-orange-600">{orders.length}</p>
+                )}
+                <p className="text-sm text-gray-500 mt-1">Total orders received</p>
               </div>
-              <div className="mt-3">
-                {getFarmingAdvice(weather).slice(0, 2).map((advice, i) => (
-                  <p key={i} className="text-sm text-gray-700">{advice}</p>
-                ))}
+              <div className="bg-orange-100 p-3 rounded-full">
+                <span className="text-orange-600 text-xl">📋</span>
               </div>
             </div>
-          )}
+            <Link
+              to="/orders"
+              className="mt-4 inline-block text-orange-600 hover:text-orange-800 text-sm font-medium"
+            >
+              View all orders →
+            </Link>
+          </div>
 
           {/* AI Diagnosis Card */}
           <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-purple-500 hover:shadow-lg transition-shadow">
@@ -522,7 +694,7 @@ const FarmerDashboard = () => {
             <div className="p-6 text-center">
               <p className="text-gray-500 mb-4">You haven't added any products yet</p>
               <Link
-                to="/marketplace/add"
+                to="/add-product"
                 className="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 Add Your First Product
@@ -530,6 +702,66 @@ const FarmerDashboard = () => {
             </div>
           )}
         </div>
+
+        {/* Recent Orders Section */}
+        {orders.length > 0 && (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                <span className="bg-orange-100 text-orange-600 p-2 rounded-lg mr-3">📋</span>
+                Recent Orders
+              </h2>
+            </div>
+            
+            <div className="divide-y">
+              {orders.slice(0, 3).map((order) => (
+                <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium text-gray-800">
+                        Order #{order.id.substring(0, 8)}
+                      </h3>
+                      <p className="text-sm text-gray-500">{order.formattedDate}</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        {order.items.length} item{order.items.length !== 1 ? 's' : ''} • ₦{order.totalAmount?.toLocaleString() || '--'}
+                      </p>
+                    </div>
+                    <div className="flex items-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        order.status === 'completed' 
+                          ? 'bg-green-100 text-green-800' 
+                          : order.status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                      }`}>
+                        {order.status}
+                      </span>
+                      <Link 
+                        to={`/orders/${order.id}`}
+                        className="ml-3 text-gray-400 hover:text-gray-600"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {orders.length > 3 && (
+              <div className="p-4 text-center border-t">
+                <Link 
+                  to="/orders" 
+                  className="text-green-600 hover:text-green-800 font-medium"
+                >
+                  View all orders →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Diagnosis Tools Section */}
         <section id="diagnosis" className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -594,7 +826,7 @@ const FarmerDashboard = () => {
             </div>
             
             <p className="text-gray-600 mb-4">
-              Upload or capture an image of your crops for instant analysis.
+              Upload or capture an image of your crops for instant analysis using our advanced AI.
             </p>
             
             {!cameraOn ? (
@@ -724,7 +956,7 @@ const FarmerDashboard = () => {
         {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Link
-            to="/marketplace/add"
+            to="/add-product"
             className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow text-center"
           >
             <div className="bg-green-100 text-green-600 p-3 rounded-full inline-block mb-2">

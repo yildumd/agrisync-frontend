@@ -5,6 +5,27 @@ import { onAuthStateChanged } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+// Common categories used in both AddProduct and Marketplace
+const PRODUCT_CATEGORIES = [
+  "Grains & Cereals",
+  "Fruits",
+  "Vegetables",
+  "Livestock",
+  "Dairy Products",
+  "Poultry",
+  "Seafood",
+  "Nuts & Seeds",
+  "Spices & Herbs",
+  "Tubers",
+  "Legumes",
+  "Processed Foods",
+  "Organic Products",
+  "Farm Equipment",
+  "Fertilizers",
+  "Seeds & Seedlings",
+  "Other"
+];
+
 const Marketplace = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,7 +34,6 @@ const Marketplace = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
-  const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
   const { role } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +65,7 @@ const Marketplace = () => {
           q = query(q, where("category", "==", categoryFilter));
         }
         if (locationFilter !== "all") {
-          q = query(q, where("location", "==", locationFilter));
+          q = query(q, where("state", "==", locationFilter)); // Changed from location to state
         }
 
         const snapshot = await getDocs(q);
@@ -57,9 +77,8 @@ const Marketplace = () => {
           return;
         }
 
-        // Process products and extract filters
+        // Process products and extract locations
         const productsData = [];
-        const categorySet = new Set();
         const locationSet = new Set();
 
         for (const doc of snapshot.docs) {
@@ -75,15 +94,13 @@ const Marketplace = () => {
             continue;
           }
 
-          // Add to filters
-          if (product.category) categorySet.add(product.category);
-          if (product.location) locationSet.add(product.location);
+          // Add to location filters
+          if (product.state) locationSet.add(product.state);
 
           productsData.push(product);
         }
 
         setProducts(productsData);
-        setCategories(Array.from(categorySet));
         setLocations(Array.from(locationSet));
 
       } catch (error) {
@@ -114,6 +131,7 @@ const Marketplace = () => {
       navigate("/add-product");
     } else {
       alert("Please register as a farmer to list products");
+      navigate("/register?role=farmer");
     }
   };
 
@@ -211,7 +229,7 @@ const Marketplace = () => {
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
               <option value="all">All Categories</option>
-              {categories.map(cat => (
+              {PRODUCT_CATEGORIES.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -290,13 +308,18 @@ const Marketplace = () => {
                   </span>
                 </div>
                 
-                <p className="text-sm text-gray-500 mb-2 flex items-center">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  {product.location || "Unknown location"}
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-500 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {product.state || "Unknown location"}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Qty: {product.quantity}
+                  </p>
+                </div>
                 
                 <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                   {product.description || "No description available"}

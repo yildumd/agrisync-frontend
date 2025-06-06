@@ -12,22 +12,83 @@ const Register = () => {
     name: "",
     email: "",
     password: "",
+    confirmPassword: "",
     phone: "",
-    location: "",
+    country: "",
+    state: "",
+    address: "",
     crop: "",
   });
   const [photoFile, setPhotoFile] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Country and state data
+  const countries = [
+    { name: "Nigeria", code: "NG", states: [
+      "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", 
+      "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", 
+      "Ekiti", "Enugu", "FCT", "Gombe", "Imo", "Jigawa", 
+      "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", 
+      "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", 
+      "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara"
+    ]},
+    { name: "Ghana", code: "GH", states: [
+      "Greater Accra", "Ashanti", "Western", "Central", "Eastern", 
+      "Volta", "Northern", "Upper East", "Upper West", "Brong-Ahafo"
+    ]},
+    { name: "Kenya", code: "KE", states: [
+      "Nairobi", "Mombasa", "Kisumu", "Nakuru", "Eldoret", 
+      "Machakos", "Meru", "Kiambu", "Kakamega", "Bungoma"
+    ]},
+    // Add more countries as needed
+  ];
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+    
+    // Clear errors when user starts typing
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
+    }
+    
+    // Reset states when country changes
+    if (name === "country") {
+      setFormData(prev => ({ ...prev, state: "" }));
+    }
   };
 
   const handleFileChange = (e) => {
     setPhotoFile(e.target.files[0]);
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.email.trim()) newErrors.email = "Email is required";
+    else if (!/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Email is invalid";
+    if (!formData.password) newErrors.password = "Password is required";
+    else if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
+    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+    if (!formData.phone.trim()) newErrors.phone = "Phone is required";
+    if (!formData.country) newErrors.country = "Country is required";
+    if (!formData.state) newErrors.state = "State is required";
+    if (!formData.address) newErrors.address = "Address is required";
+    if (role === "farmer" && !formData.crop.trim()) newErrors.crop = "Crop is required";
+    if (role === "farmer" && !photoFile) newErrors.photo = "Profile photo is required";
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) return;
+    
+    setIsSubmitting(true);
 
     try {
       // 1. Create the user account
@@ -60,7 +121,7 @@ const Register = () => {
       }
 
       // 3. Prepare user data (remove password from saved object)
-      const { password, ...userDataToSave } = formData;
+      const { password, confirmPassword, ...userDataToSave } = formData;
 
       const userData = {
         uid: user.uid,
@@ -83,25 +144,31 @@ const Register = () => {
     } catch (error) {
       console.error("Registration error:", error);
       if (error.code === "auth/email-already-in-use") {
-        alert("Email already in use.");
+        setErrors({ ...errors, email: "Email already in use" });
       } else {
         alert("Registration failed: " + error.message);
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const selectedCountry = countries.find(c => c.name === formData.country);
+
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
+    <div className="max-w-md mx-auto my-10 p-6 bg-white shadow-lg rounded-xl">
       <h2 className="text-2xl font-bold text-center text-green-700 mb-6">
         Register as {role === "farmer" ? "Farmer" : "Buyer"}
       </h2>
 
-      <div className="mb-4 flex justify-center space-x-4">
+      <div className="mb-6 flex justify-center space-x-4">
         <button
           type="button"
           onClick={() => setRole("farmer")}
-          className={`px-4 py-2 rounded-md ${
-            role === "farmer" ? "bg-green-700 text-white" : "bg-gray-200"
+          className={`px-4 py-2 rounded-md transition-colors ${
+            role === "farmer" 
+              ? "bg-green-700 text-white shadow-md" 
+              : "bg-gray-200 hover:bg-gray-300"
           }`}
         >
           Farmer
@@ -109,8 +176,10 @@ const Register = () => {
         <button
           type="button"
           onClick={() => setRole("buyer")}
-          className={`px-4 py-2 rounded-md ${
-            role === "buyer" ? "bg-green-700 text-white" : "bg-gray-200"
+          className={`px-4 py-2 rounded-md transition-colors ${
+            role === "buyer" 
+              ? "bg-green-700 text-white shadow-md" 
+              : "bg-gray-200 hover:bg-gray-300"
           }`}
         >
           Buyer
@@ -118,80 +187,182 @@ const Register = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="text"
-          name="name"
-          placeholder="Full Name"
-          value={formData.name}
-          onChange={handleChange}
-          required
-          className="w-full px-4 py-2 border rounded-md"
-        />
-        <input
-          type="email"
-          name="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-          className="w-full px-4 py-2 border rounded-md"
-        />
-        <input
-          type="password"
-          name="password"
-          placeholder="Password"
-          value={formData.password}
-          onChange={handleChange}
-          required
-          className="w-full px-4 py-2 border rounded-md"
-        />
-        <input
-          type="tel"
-          name="phone"
-          placeholder="Phone Number"
-          value={formData.phone}
-          onChange={handleChange}
-          required
-          className="w-full px-4 py-2 border rounded-md"
-        />
-        <input
-          type="text"
-          name="location"
-          placeholder="Location"
-          value={formData.location}
-          onChange={handleChange}
-          required
-          className="w-full px-4 py-2 border rounded-md"
-        />
-
-        {role === "farmer" && (
+        <div>
           <input
             type="text"
-            name="crop"
-            placeholder="What produce do you sell?"
-            value={formData.crop}
+            name="name"
+            placeholder="Full Name"
+            value={formData.name}
             onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border rounded-md"
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.name ? "border-red-500" : "border-gray-300"
+            }`}
           />
+          {errors.name && <p className="mt-1 text-sm text-red-500">{errors.name}</p>}
+        </div>
+
+        <div>
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={handleChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.email ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
+        </div>
+
+        <div>
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={handleChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.password ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
+        </div>
+
+        <div>
+          <input
+            type="password"
+            name="confirmPassword"
+            placeholder="Confirm Password"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.confirmPassword ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.confirmPassword && (
+            <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>
+          )}
+        </div>
+
+        <div>
+          <input
+            type="tel"
+            name="phone"
+            placeholder="Phone Number"
+            value={formData.phone}
+            onChange={handleChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.phone ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.phone && <p className="mt-1 text-sm text-red-500">{errors.phone}</p>}
+        </div>
+
+        <div>
+          <select
+            name="country"
+            value={formData.country}
+            onChange={handleChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.country ? "border-red-500" : "border-gray-300"
+            }`}
+          >
+            <option value="">Select Country</option>
+            {countries.map((country) => (
+              <option key={country.code} value={country.name}>
+                {country.name}
+              </option>
+            ))}
+          </select>
+          {errors.country && <p className="mt-1 text-sm text-red-500">{errors.country}</p>}
+        </div>
+
+        <div>
+          <select
+            name="state"
+            value={formData.state}
+            onChange={handleChange}
+            disabled={!formData.country}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.state ? "border-red-500" : "border-gray-300"
+            }`}
+          >
+            <option value="">Select State</option>
+            {selectedCountry?.states.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </select>
+          {errors.state && <p className="mt-1 text-sm text-red-500">{errors.state}</p>}
+        </div>
+
+        <div>
+          <textarea
+            name="address"
+            placeholder="Full Address"
+            value={formData.address}
+            onChange={handleChange}
+            rows={3}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.address ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.address && <p className="mt-1 text-sm text-red-500">{errors.address}</p>}
+        </div>
+
+        {role === "farmer" && (
+          <div>
+            <input
+              type="text"
+              name="crop"
+              placeholder="What produce do you sell? (e.g., Maize, Tomatoes)"
+              value={formData.crop}
+              onChange={handleChange}
+              className={`w-full px-4 py-2 border rounded-md ${
+                errors.crop ? "border-red-500" : "border-gray-300"
+              }`}
+            />
+            {errors.crop && <p className="mt-1 text-sm text-red-500">{errors.crop}</p>}
+          </div>
         )}
 
-        {/* Optional: allow both farmers and buyers to upload a profile picture */}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="w-full px-4 py-2 border rounded-md"
-          required={role === "farmer"} // required only for farmers
-        />
+        <div>
+          <label className="block mb-1 text-sm font-medium text-gray-700">
+            {role === "farmer" ? "Profile Photo (Required)" : "Profile Photo (Optional)"}
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className={`w-full px-4 py-2 border rounded-md ${
+              errors.photo ? "border-red-500" : "border-gray-300"
+            }`}
+          />
+          {errors.photo && <p className="mt-1 text-sm text-red-500">{errors.photo}</p>}
+        </div>
 
         <button
           type="submit"
-          className="w-full bg-green-700 text-white py-2 rounded-md hover:bg-green-800"
+          disabled={isSubmitting}
+          className={`w-full bg-green-700 text-white py-2 rounded-md hover:bg-green-800 transition-colors ${
+            isSubmitting ? "opacity-70 cursor-not-allowed" : ""
+          }`}
         >
-          Register
+          {isSubmitting ? "Registering..." : "Register"}
         </button>
       </form>
+
+      <p className="mt-4 text-center text-sm text-gray-600">
+        Already have an account?{" "}
+        <button 
+          onClick={() => navigate("/login")} 
+          className="text-green-700 hover:underline"
+        >
+          Login here
+        </button>
+      </p>
     </div>
   );
 };
