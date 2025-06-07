@@ -17,8 +17,6 @@ const Register = () => {
     country: "",
     state: "",
     address: "",
-    produceCategory: "",
-    specificProduce: ""
   });
   const [photoFile, setPhotoFile] = useState(null);
   const [errors, setErrors] = useState({});
@@ -64,25 +62,11 @@ const Register = () => {
     ]}
   ];
 
-  const produceCategories = {
-    "Cereals": ["Maize", "Rice", "Wheat", "Sorghum", "Millet", "Barley"],
-    "Legumes": ["Beans", "Cowpea", "Soybeans", "Groundnut", "Lentils"],
-    "Tubers": ["Cassava", "Yam", "Potato", "Sweet Potato", "Cocoyam"],
-    "Vegetables": ["Tomatoes", "Onions", "Peppers", "Okra", "Leafy Greens"],
-    "Fruits": ["Banana", "Mango", "Orange", "Pineapple", "Avocado"],
-    "Cash Crops": ["Coffee", "Cocoa", "Cotton", "Sugarcane", "Tobacco"],
-    "Livestock": ["Cattle", "Poultry", "Goats", "Sheep", "Pigs"],
-    "Dairy": ["Milk", "Cheese", "Yogurt", "Butter"],
-    "Other": ["Other (Please Specify)"]
-  };
-
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ 
       ...prev, 
-      [name]: value,
-      // Reset specific produce when category changes
-      ...(name === "produceCategory" ? { specificProduce: "" } : {})
+      [name]: value
     }));
     
     if (errors[name]) {
@@ -112,10 +96,8 @@ const Register = () => {
     if (!formData.state) newErrors.state = "State is required";
     if (!formData.address) newErrors.address = "Address is required";
     
-    if (role === "farmer") {
-      if (!formData.produceCategory) newErrors.produceCategory = "Produce category is required";
-      if (!formData.specificProduce) newErrors.specificProduce = "Specific produce is required";
-      if (!photoFile) newErrors.photo = "Profile photo is required";
+    if (role === "farmer" && !photoFile) {
+      newErrors.photo = "Profile photo is required";
     }
     
     setErrors(newErrors);
@@ -188,7 +170,6 @@ const Register = () => {
   };
 
   const selectedCountry = countries.find(c => c.name === formData.country);
-  const selectedCategory = produceCategories[formData.produceCategory] || [];
 
   return (
     <div className="max-w-md mx-auto my-10 p-6 bg-white shadow-lg rounded-xl">
@@ -346,53 +327,6 @@ const Register = () => {
           />
           {errors.address && <p className="mt-1 text-sm text-red-500">{errors.address}</p>}
         </div>
-
-        {role === "farmer" && (
-          <>
-            <div>
-              <select
-                name="produceCategory"
-                value={formData.produceCategory}
-                onChange={handleChange}
-                className={`w-full px-4 py-2 border rounded-md ${
-                  errors.produceCategory ? "border-red-500" : "border-gray-300"
-                }`}
-              >
-                <option value="">Select Produce Category</option>
-                {Object.keys(produceCategories).map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              {errors.produceCategory && (
-                <p className="mt-1 text-sm text-red-500">{errors.produceCategory}</p>
-              )}
-            </div>
-
-            <div>
-              <select
-                name="specificProduce"
-                value={formData.specificProduce}
-                onChange={handleChange}
-                disabled={!formData.produceCategory}
-                className={`w-full px-4 py-2 border rounded-md ${
-                  errors.specificProduce ? "border-red-500" : "border-gray-300"
-                }`}
-              >
-                <option value="">Select Specific Produce</option>
-                {selectedCategory.map((produce) => (
-                  <option key={produce} value={produce}>
-                    {produce}
-                  </option>
-                ))}
-              </select>
-              {errors.specificProduce && (
-                <p className="mt-1 text-sm text-red-500">{errors.specificProduce}</p>
-              )}
-            </div>
-          </>
-        )}
 
         <div>
           <label className="block mb-1 text-sm font-medium text-gray-700">

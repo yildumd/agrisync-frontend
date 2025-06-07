@@ -5,7 +5,6 @@ import { onAuthStateChanged } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-// Common categories used in both AddProduct and Marketplace
 const PRODUCT_CATEGORIES = [
   "Grains & Cereals",
   "Fruits",
@@ -35,124 +34,156 @@ const Marketplace = () => {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [locations, setLocations] = useState([]);
+  const [quantities, setQuantities] = useState({}); // Stores quantities for each product
   const { role } = useAuth();
   const navigate = useNavigate();
 
-  // Check user auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  // Fetch products with error handling
-  useEffect(() => {
-    const fetchMarketplace = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Base query for available products
-        let q = query(
-          collection(db, "products"),
-          where("status", "==", "available"),
-          orderBy("createdAt", "desc")
-        );
+  const fetchMarketplace = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      let q = query(
+        collection(db, "products"),
+        where("status", "==", "available"),
+        orderBy("createdAt", "desc")
+      );
 
-        // Apply additional filters
-        if (categoryFilter !== "all") {
-          q = query(q, where("category", "==", categoryFilter));
-        }
-        if (locationFilter !== "all") {
-          q = query(q, where("state", "==", locationFilter)); // Changed from location to state
-        }
+      if (categoryFilter !== "all") {
+        q = query(q, where("category", "==", categoryFilter));
+      }
+      if (locationFilter !== "all") {
+        q = query(q, where("state", "==", locationFilter));
+      }
 
-        const snapshot = await getDocs(q);
-        console.log("Firestore query returned", snapshot.size, "products");
+      const snapshot = await getDocs(q);
+      console.log("Marketplace products loaded:", snapshot.size);
 
-        if (snapshot.empty) {
-          setProducts([]);
-          setLoading(false);
+      if (snapshot.empty) {
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      const productsData = [];
+      const locationSet = new Set();
+      const initialQuantities = {};
+
+      snapshot.forEach(doc => {
+        const productData = doc.data();
+        if (!productData.name || !productData.price) {
+          console.warn("Incomplete product skipped:", doc.id);
           return;
         }
 
-        // Process products and extract locations
-        const productsData = [];
-        const locationSet = new Set();
+        const product = {
+          id: doc.id,
+          ...productData,
+          createdAt: productData.createdAt?.toDate()?.toLocaleDateString() || "N/A",
+          sellerName: productData.sellerName || "Unknown Farmer"
+        };
 
-        for (const doc of snapshot.docs) {
-          const product = { 
-            id: doc.id, 
-            ...doc.data(),
-            createdAt: doc.data().createdAt?.toDate()?.toLocaleDateString() || "N/A"
-          };
+        if (productData.state) locationSet.add(productData.state);
+        productsData.push(product);
+        
+        // Initialize quantity to 1kg by default
+        initialQuantities[doc.id] = 1;
+      });
 
-          // Validate required fields
-          if (!product.name || !product.price || !product.image) {
-            console.warn("Incomplete product skipped:", product.id);
-            continue;
-          }
+      setProducts(productsData);
+      setLocations(Array.from(locationSet));
+      setQuantities(initialQuantities);
 
-          // Add to location filters
-          if (product.state) locationSet.add(product.state);
-
-          productsData.push(product);
-        }
-
-        setProducts(productsData);
-        setLocations(Array.from(locationSet));
-
-      } catch (error) {
-        console.error("Failed to load products:", error);
-        setError(error.message.includes("index") 
+    } catch (error) {
+      console.error("Error loading marketplace:", error);
+      setError(
+        error.message.includes("index") 
           ? "Please wait while we prepare the marketplace..." 
-          : "Failed to load products. Please refresh.");
-      } finally {
-        setLoading(false);
-      }
-    };
+          : "Failed to load products. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchMarketplace();
   }, [categoryFilter, locationFilter]);
 
-  // Filter products by search term
+  const handleQuantityChange = (productId, value) => {
+    const numValue = parseInt(value);
+    if (!isNaN(numValue) && numValue > 0) {
+      setQuantities(prev => ({
+        ...prev,
+        [productId]: numValue
+      }));
+    }
+  };
+
+  const handleOrderNow = (product) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    
+    const selectedQuantity = quantities[product.id] || 1;
+    navigate(`/checkout`, {
+      state: {
+        productId: product.id,
+        productName: product.name,
+        price: product.price,
+        quantity: selectedQuantity,
+        sellerId: product.sellerId,
+        sellerName: product.sellerName || "Unknown Farmer",
+        totalPrice: (product.price * selectedQuantity).toFixed(2)
+      }
+    });
+  };
+
   const filteredProducts = products.filter(product => {
     const term = searchTerm.toLowerCase();
     return (
       product.name.toLowerCase().includes(term) ||
       (product.description && product.description.toLowerCase().includes(term)) ||
-      (product.category && product.category.toLowerCase().includes(term))
+      (product.category && product.category.toLowerCase().includes(term)) ||
+      (product.sellerName && product.sellerName.toLowerCase().includes(term))
     );
   });
 
   const handleAddProduct = () => {
-    if (role === "farmer") {
-      navigate("/add-product");
-    } else {
-      alert("Please register as a farmer to list products");
-      navigate("/register?role=farmer");
-    }
+    navigate(role === "farmer" ? "/add-product" : "/register?role=farmer");
   };
 
-  // Loading skeleton
+  const handleMessageSeller = (sellerId) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    navigate(`/messages?to=${sellerId}`);
+  };
+
   const renderSkeletons = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {[...Array(8)].map((_, i) => (
-        <div key={i} className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="h-48 bg-gray-200 animate-pulse"></div>
+        <div key={i} className="bg-white rounded-lg shadow-md overflow-hidden animate-pulse">
+          <div className="h-48 bg-gray-200"></div>
           <div className="p-4 space-y-3">
-            <div className="h-5 bg-gray-200 rounded w-3/4 animate-pulse"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
-            <div className="h-4 bg-gray-200 rounded w-full animate-pulse"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse"></div>
+            <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-4 bg-gray-200 rounded w-full"></div>
           </div>
         </div>
       ))}
     </div>
   );
 
-  // Empty state
   const renderEmptyState = () => (
     <div className="text-center py-12 bg-white rounded-lg shadow">
       <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -161,19 +192,14 @@ const Marketplace = () => {
       <h3 className="mt-2 text-lg font-medium text-gray-900">
         {categoryFilter !== "all" || locationFilter !== "all" 
           ? "No matching products found" 
-          : "Marketplace is empty"}
+          : "No products available yet"}
       </h3>
-      <p className="mt-1 text-gray-500">
-        {categoryFilter !== "all" || locationFilter !== "all"
-          ? "Try adjusting your filters"
-          : "Check back soon for new listings"}
-      </p>
       {role === "farmer" && (
         <button
           onClick={handleAddProduct}
           className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium"
         >
-          Add Your First Product
+          List Your Products
         </button>
       )}
     </div>
@@ -195,36 +221,29 @@ const Marketplace = () => {
         {role === "farmer" && (
           <button
             onClick={handleAddProduct}
-            className="mt-4 md:mt-0 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center"
+            className="mt-4 md:mt-0 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-            Add Product
+            + Add Product
           </button>
         )}
       </div>
 
       {/* Search and Filters */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-2">
-            <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">Search Products</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
             <input
               type="text"
-              id="search"
-              placeholder="Search by name, description or category..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+              placeholder="Search products..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           
           <div>
-            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
-              id="category"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
@@ -236,10 +255,8 @@ const Marketplace = () => {
           </div>
           
           <div>
-            <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">Location</label>
             <select
-              id="location"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
             >
@@ -252,7 +269,6 @@ const Marketplace = () => {
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
           <div className="flex">
@@ -277,19 +293,19 @@ const Marketplace = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((product) => (
             <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200">
-              <div className="relative">
+              <div className="relative h-48 bg-gray-100">
                 {product.image ? (
                   <img
                     src={product.image}
                     alt={product.name}
-                    className="w-full h-48 object-cover"
+                    className="w-full h-full object-cover"
                     onError={(e) => {
                       e.target.onerror = null; 
                       e.target.src = "/placeholder-product.png";
                     }}
                   />
                 ) : (
-                  <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500">
+                  <div className="w-full h-full flex items-center justify-center text-gray-400">
                     <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -304,7 +320,7 @@ const Marketplace = () => {
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">{product.name}</h3>
                   <span className="text-lg font-bold text-green-600 whitespace-nowrap">
-                    ₦{product.price?.toLocaleString()}
+                    ₦{product.price?.toLocaleString()}/kg
                   </span>
                 </div>
                 
@@ -317,7 +333,7 @@ const Marketplace = () => {
                     {product.state || "Unknown location"}
                   </p>
                   <p className="text-sm text-gray-500">
-                    Qty: {product.quantity}
+                    Available: {product.quantity} kg
                   </p>
                 </div>
                 
@@ -325,7 +341,24 @@ const Marketplace = () => {
                   {product.description || "No description available"}
                 </p>
                 
-                <div className="flex items-center justify-between">
+                {/* Quantity Selector */}
+                <div className="mb-4">
+                  <label htmlFor={`quantity-${product.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity (kg)
+                  </label>
+                  <input
+                    type="number"
+                    id={`quantity-${product.id}`}
+                    min="1"
+                    max={product.quantity}
+                    value={quantities[product.id] || 1}
+                    onChange={(e) => handleQuantityChange(product.id, e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                
+                {/* Seller Info */}
+                <div className="flex items-center justify-between mb-4">
                   <Link
                     to={`/farmers/${product.sellerId}`}
                     className="flex items-center text-sm hover:text-green-700"
@@ -340,17 +373,40 @@ const Marketplace = () => {
                       )}
                     </div>
                     <span className="font-medium">
-                      {product.sellerName || "Farmer"}
+                      {product.sellerName || "Unknown Farmer"}
                     </span>
                   </Link>
-                  
-                  <Link
-                    to={`/products/${product.id}`}
-                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors"
-                  >
-                    View
-                  </Link>
                 </div>
+
+                {/* Action Buttons */}
+                {user ? (
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleMessageSeller(product.sellerId)}
+                      className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors flex items-center justify-center"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Message
+                    </button>
+                    <button
+                      onClick={() => handleOrderNow(product)}
+                      className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors"
+                    >
+                      Order Now
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <button
+                      onClick={() => navigate("/login")}
+                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors"
+                    >
+                      Sign in to purchase
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
