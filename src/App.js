@@ -17,7 +17,6 @@ import Dashboard from "./pages/Dashboard";
 import OrdersPage from "./pages/OrdersPage"; // ✅ NEW IMPORT
 import ChatPage from "./pages/ChatPage";
 import ChatInbox from "./pages/ChatInbox";
-import MessagesPage from "./pages/MessagesPage"; // ✅ NEW IMPORT
 
 // Route Guards
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -61,10 +60,9 @@ const AppRoutes = () => {
       {/* ✅ Orders Page for all logged-in users */}
       <Route path="/orders" element={user ? <OrdersPage /> : <Navigate to="/login" />} />
 
-      {/* ✅ Chat Routes */}
+      {/* Chat Routes */}
       <Route path="/inbox" element={user ? <ChatInbox /> : <Navigate to="/login" />} />
       <Route path="/chat/:chatId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
-      <Route path="/messages" element={user ? <MessagesPage /> : <Navigate to="/login" />} /> {/* ✅ NEW ROUTE */}
 
       {/* Other */}
       <Route path="/verify-email" element={<div>Please verify your email to access this page.</div>} />

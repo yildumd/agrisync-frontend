@@ -17,13 +17,13 @@ const Register = () => {
     country: "",
     state: "",
     address: "",
-    crop: "",
+    produceCategory: "",
+    specificProduce: ""
   });
   const [photoFile, setPhotoFile] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Country and state data
   const countries = [
     { name: "Nigeria", code: "NG", states: [
       "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", 
@@ -41,19 +41,54 @@ const Register = () => {
       "Nairobi", "Mombasa", "Kisumu", "Nakuru", "Eldoret", 
       "Machakos", "Meru", "Kiambu", "Kakamega", "Bungoma"
     ]},
-    // Add more countries as needed
+    { name: "South Africa", code: "ZA", states: [
+      "Gauteng", "KwaZulu-Natal", "Western Cape", "Eastern Cape",
+      "Limpopo", "Mpumalanga", "Free State", "North West", "Northern Cape"
+    ]},
+    { name: "Tanzania", code: "TZ", states: [
+      "Dar es Salaam", "Dodoma", "Arusha", "Mwanza", "Mbeya",
+      "Morogoro", "Tanga", "Kilimanjaro", "Kigoma", "Rukwa",
+      "Katavi", "Njombe", "Manyara", "Simiyu", "Geita"
+    ]},
+    { name: "Ethiopia", code: "ET", states: [
+      "Addis Ababa", "Afar", "Amhara", "Benishangul-Gumuz",
+      "Dire Dawa", "Gambela", "Harari", "Oromia", "Somali",
+      "Southern Nations, Nationalities, and Peoples' Region (SNNPR)",
+      "Tigray"
+    ]},
+    { name: "Egypt", code: "EG", states: [
+      "Cairo", "Alexandria", "Giza", "Luxor", "Aswan",
+      "Port Said", "Suez", "Sharm El Sheikh", "Hurghada",
+      "Mansoura", "Tanta", "Ismailia", "Faiyum", "Asyut",
+      "Zagazig", "Damanhur", "Beni Suef", "Minya", "Qena"
+    ]}
   ];
+
+  const produceCategories = {
+    "Cereals": ["Maize", "Rice", "Wheat", "Sorghum", "Millet", "Barley"],
+    "Legumes": ["Beans", "Cowpea", "Soybeans", "Groundnut", "Lentils"],
+    "Tubers": ["Cassava", "Yam", "Potato", "Sweet Potato", "Cocoyam"],
+    "Vegetables": ["Tomatoes", "Onions", "Peppers", "Okra", "Leafy Greens"],
+    "Fruits": ["Banana", "Mango", "Orange", "Pineapple", "Avocado"],
+    "Cash Crops": ["Coffee", "Cocoa", "Cotton", "Sugarcane", "Tobacco"],
+    "Livestock": ["Cattle", "Poultry", "Goats", "Sheep", "Pigs"],
+    "Dairy": ["Milk", "Cheese", "Yogurt", "Butter"],
+    "Other": ["Other (Please Specify)"]
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: value,
+      // Reset specific produce when category changes
+      ...(name === "produceCategory" ? { specificProduce: "" } : {})
+    }));
     
-    // Clear errors when user starts typing
     if (errors[name]) {
       setErrors({ ...errors, [name]: "" });
     }
     
-    // Reset states when country changes
     if (name === "country") {
       setFormData(prev => ({ ...prev, state: "" }));
     }
@@ -76,8 +111,12 @@ const Register = () => {
     if (!formData.country) newErrors.country = "Country is required";
     if (!formData.state) newErrors.state = "State is required";
     if (!formData.address) newErrors.address = "Address is required";
-    if (role === "farmer" && !formData.crop.trim()) newErrors.crop = "Crop is required";
-    if (role === "farmer" && !photoFile) newErrors.photo = "Profile photo is required";
+    
+    if (role === "farmer") {
+      if (!formData.produceCategory) newErrors.produceCategory = "Produce category is required";
+      if (!formData.specificProduce) newErrors.specificProduce = "Specific produce is required";
+      if (!photoFile) newErrors.photo = "Profile photo is required";
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -91,7 +130,6 @@ const Register = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Create the user account
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
@@ -99,7 +137,6 @@ const Register = () => {
       );
       const user = userCredential.user;
 
-      // 2. Upload photo if provided
       let photoUrl = "";
       if (photoFile) {
         const cloudinaryData = new FormData();
@@ -120,7 +157,6 @@ const Register = () => {
         photoUrl = cloudinaryRes.secure_url;
       }
 
-      // 3. Prepare user data (remove password from saved object)
       const { password, confirmPassword, ...userDataToSave } = formData;
 
       const userData = {
@@ -131,12 +167,10 @@ const Register = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // 4. Save to Firestore (general + role collection)
       await setDoc(doc(db, "users", user.uid), userData);
       const roleCollection = role === "farmer" ? "farmers" : "buyers";
       await setDoc(doc(db, roleCollection, user.uid), userData);
 
-      // 5. Save to localStorage
       localStorage.setItem("user", JSON.stringify(userData));
 
       alert("Registration successful!");
@@ -154,6 +188,7 @@ const Register = () => {
   };
 
   const selectedCountry = countries.find(c => c.name === formData.country);
+  const selectedCategory = produceCategories[formData.produceCategory] || [];
 
   return (
     <div className="max-w-md mx-auto my-10 p-6 bg-white shadow-lg rounded-xl">
@@ -313,19 +348,50 @@ const Register = () => {
         </div>
 
         {role === "farmer" && (
-          <div>
-            <input
-              type="text"
-              name="crop"
-              placeholder="What produce do you sell? (e.g., Maize, Tomatoes)"
-              value={formData.crop}
-              onChange={handleChange}
-              className={`w-full px-4 py-2 border rounded-md ${
-                errors.crop ? "border-red-500" : "border-gray-300"
-              }`}
-            />
-            {errors.crop && <p className="mt-1 text-sm text-red-500">{errors.crop}</p>}
-          </div>
+          <>
+            <div>
+              <select
+                name="produceCategory"
+                value={formData.produceCategory}
+                onChange={handleChange}
+                className={`w-full px-4 py-2 border rounded-md ${
+                  errors.produceCategory ? "border-red-500" : "border-gray-300"
+                }`}
+              >
+                <option value="">Select Produce Category</option>
+                {Object.keys(produceCategories).map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              {errors.produceCategory && (
+                <p className="mt-1 text-sm text-red-500">{errors.produceCategory}</p>
+              )}
+            </div>
+
+            <div>
+              <select
+                name="specificProduce"
+                value={formData.specificProduce}
+                onChange={handleChange}
+                disabled={!formData.produceCategory}
+                className={`w-full px-4 py-2 border rounded-md ${
+                  errors.specificProduce ? "border-red-500" : "border-gray-300"
+                }`}
+              >
+                <option value="">Select Specific Produce</option>
+                {selectedCategory.map((produce) => (
+                  <option key={produce} value={produce}>
+                    {produce}
+                  </option>
+                ))}
+              </select>
+              {errors.specificProduce && (
+                <p className="mt-1 text-sm text-red-500">{errors.specificProduce}</p>
+              )}
+            </div>
+          </>
         )}
 
         <div>
