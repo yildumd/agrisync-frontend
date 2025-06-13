@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase";
-import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, doc, deleteDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -25,6 +25,59 @@ const PRODUCT_CATEGORIES = [
   "Other"
 ];
 
+const COUNTRY_STATES = {
+  Ethiopia: [
+    "Addis Ababa", "Afar", "Amhara", "Benishangul-Gumuz", "Dire Dawa", 
+    "Gambela", "Harari", "Oromia", "Somali", "Southern Nations", 
+    "Tigray"
+  ],
+  Ghana: [
+    "Greater Accra", "Ashanti", "Western", "Central", "Eastern", 
+    "Volta", "Northern", "Upper East", "Upper West", "Brong-Ahafo", 
+    "Bono East", "Ahafo", "Savannah", "North East", "Oti", 
+    "Western North"
+  ],
+  Nigeria: [
+    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", 
+    "Bayelsa", "Benue", "Borno", "Cross River", "Delta", 
+    "Ebonyi", "Edo", "Ekiti", "Enugu", "Gombe", 
+    "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", 
+    "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", 
+    "Niger", "Ogun", "Ondo", "Osun", "Oyo", 
+    "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", 
+    "Zamfara", "FCT"
+  ],
+  Kenya: [
+    "Nairobi", "Mombasa", "Kwale", "Kilifi", "Tana River", 
+    "Lamu", "Taita-Taveta", "Garissa", "Wajir", "Mandera", 
+    "Marsabit", "Isiolo", "Meru", "Tharaka-Nithi", "Embu", 
+    "Kitui", "Machakos", "Makueni", "Nyandarua", "Nyeri", 
+    "Kirinyaga", "Murang'a", "Kiambu", "Turkana", "West Pokot", 
+    "Samburu", "Trans Nzoia", "Uasin Gishu", "Elgeyo-Marakwet", "Nandi", 
+    "Baringo", "Laikipia", "Nakuru", "Narok", "Kajiado", 
+    "Kericho", "Bomet", "Kakamega", "Vihiga", "Bungoma", 
+    "Busia", "Siaya", "Kisumu", "Homa Bay", "Migori", 
+    "Kisii", "Nyamira"
+  ],
+  Egypt: [
+    "Cairo", "Alexandria", "Giza", "Dakahlia", "Red Sea", 
+    "Beheira", "Fayoum", "Gharbia", "Ismailia", "Menofia", 
+    "Minya", "Qaliubia", "New Valley", "Suez", "Aswan", 
+    "Assiut", "Beni Suef", "Port Said", "Damietta", "Sharkia", 
+    "South Sinai", "Kafr El Sheikh", "Matrouh", "Luxor", "Qena", 
+    "North Sinai", "Sohag", "6th of October", "Helwan", "Marsa Matrouh"
+  ],
+  Tanzania: [
+    "Arusha", "Dar es Salaam", "Dodoma", "Geita", "Iringa", 
+    "Kagera", "Katavi", "Kigoma", "Kilimanjaro", "Lindi", 
+    "Manyara", "Mara", "Mbeya", "Morogoro", "Mtwara", 
+    "Mwanza", "Njombe", "Pemba North", "Pemba South", "Pwani", 
+    "Rukwa", "Ruvuma", "Shinyanga", "Simiyu", "Singida", 
+    "Songwe", "Tabora", "Tanga", "Zanzibar North", "Zanzibar South", 
+    "Zanzibar West"
+  ]
+};
+
 const Marketplace = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,8 +86,8 @@ const Marketplace = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("all");
   const [locations, setLocations] = useState([]);
-  const [quantities, setQuantities] = useState({}); // Stores quantities for each product
   const { role } = useAuth();
   const navigate = useNavigate();
 
@@ -59,6 +112,9 @@ const Marketplace = () => {
       if (categoryFilter !== "all") {
         q = query(q, where("category", "==", categoryFilter));
       }
+      if (countryFilter !== "all") {
+        q = query(q, where("country", "==", countryFilter));
+      }
       if (locationFilter !== "all") {
         q = query(q, where("state", "==", locationFilter));
       }
@@ -74,7 +130,6 @@ const Marketplace = () => {
 
       const productsData = [];
       const locationSet = new Set();
-      const initialQuantities = {};
 
       snapshot.forEach(doc => {
         const productData = doc.data();
@@ -92,14 +147,10 @@ const Marketplace = () => {
 
         if (productData.state) locationSet.add(productData.state);
         productsData.push(product);
-        
-        // Initialize quantity to 1kg by default
-        initialQuantities[doc.id] = 1;
       });
 
       setProducts(productsData);
       setLocations(Array.from(locationSet));
-      setQuantities(initialQuantities);
 
     } catch (error) {
       console.error("Error loading marketplace:", error);
@@ -115,17 +166,7 @@ const Marketplace = () => {
 
   useEffect(() => {
     fetchMarketplace();
-  }, [categoryFilter, locationFilter]);
-
-  const handleQuantityChange = (productId, value) => {
-    const numValue = parseInt(value);
-    if (!isNaN(numValue) && numValue > 0) {
-      setQuantities(prev => ({
-        ...prev,
-        [productId]: numValue
-      }));
-    }
-  };
+  }, [categoryFilter, countryFilter, locationFilter]);
 
   const handleOrderNow = (product) => {
     if (!user) {
@@ -133,18 +174,60 @@ const Marketplace = () => {
       return;
     }
     
-    const selectedQuantity = quantities[product.id] || 1;
-    navigate(`/checkout`, {
+    if (user.uid === product.sellerId) {
+      alert("You cannot order your own products");
+      return;
+    }
+    
+    navigate(`/orders/${product.id}`, {
       state: {
-        productId: product.id,
-        productName: product.name,
-        price: product.price,
-        quantity: selectedQuantity,
-        sellerId: product.sellerId,
-        sellerName: product.sellerName || "Unknown Farmer",
-        totalPrice: (product.price * selectedQuantity).toFixed(2)
+        productDetails: product
       }
     });
+  };
+
+  const handleAddToCart = (product) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    
+    if (user.uid === product.sellerId) {
+      alert("You cannot add your own products to cart");
+      return;
+    }
+    
+    // Here you would add to cart using your cart context
+    // For now, we'll navigate to cart page with the product
+    navigate("/cart", {
+      state: {
+        productToAdd: product
+      }
+    });
+  };
+
+  const handleMessageSeller = (sellerId) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    navigate(`/messages/${sellerId}`);
+  };
+
+  const handleEditProduct = (productId) => {
+    navigate(`/edit-product/${productId}`);
+  };
+
+  const handleDeleteProduct = async (productId) => {
+    if (window.confirm("Are you sure you want to delete this product?")) {
+      try {
+        await deleteDoc(doc(db, "products", productId));
+        setProducts(products.filter(product => product.id !== productId));
+      } catch (error) {
+        console.error("Error deleting product:", error);
+        alert("Failed to delete product. Please try again.");
+      }
+    }
   };
 
   const filteredProducts = products.filter(product => {
@@ -159,14 +242,6 @@ const Marketplace = () => {
 
   const handleAddProduct = () => {
     navigate(role === "farmer" ? "/add-product" : "/register?role=farmer");
-  };
-
-  const handleMessageSeller = (sellerId) => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
-    navigate(`/messages?to=${sellerId}`);
   };
 
   const renderSkeletons = () => (
@@ -190,7 +265,7 @@ const Marketplace = () => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
       </svg>
       <h3 className="mt-2 text-lg font-medium text-gray-900">
-        {categoryFilter !== "all" || locationFilter !== "all" 
+        {categoryFilter !== "all" || countryFilter !== "all" || locationFilter !== "all" 
           ? "No matching products found" 
           : "No products available yet"}
       </h3>
@@ -230,7 +305,7 @@ const Marketplace = () => {
 
       {/* Search and Filters */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <input
               type="text"
@@ -257,12 +332,31 @@ const Marketplace = () => {
           <div>
             <select
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              value={countryFilter}
+              onChange={(e) => {
+                setCountryFilter(e.target.value);
+                setLocationFilter("all");
+              }}
+            >
+              <option value="all">All Countries</option>
+              {Object.keys(COUNTRY_STATES).map(country => (
+                <option key={country} value={country}>{country}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <select
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
+              disabled={countryFilter === "all"}
             >
-              <option value="all">All Locations</option>
-              {locations.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
+              <option value="all">
+                {countryFilter === "all" ? "Select country first" : "All States/Regions"}
+              </option>
+              {countryFilter !== "all" && COUNTRY_STATES[countryFilter].map(state => (
+                <option key={state} value={state}>{state}</option>
               ))}
             </select>
           </div>
@@ -314,6 +408,11 @@ const Marketplace = () => {
                 <div className="absolute top-2 right-2 bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
                   {product.category || "Uncategorized"}
                 </div>
+                <div className={`absolute top-2 left-2 text-xs font-semibold px-2 py-1 rounded ${
+                  product.quantity > 0 ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"
+                }`}>
+                  {product.quantity > 0 ? "Available" : "Out of Stock"}
+                </div>
               </div>
               
               <div className="p-4">
@@ -330,7 +429,7 @@ const Marketplace = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    {product.state || "Unknown location"}
+                    {product.state || "Unknown location"}, {product.country || "Unknown country"}
                   </p>
                   <p className="text-sm text-gray-500">
                     Available: {product.quantity} kg
@@ -341,23 +440,6 @@ const Marketplace = () => {
                   {product.description || "No description available"}
                 </p>
                 
-                {/* Quantity Selector */}
-                <div className="mb-4">
-                  <label htmlFor={`quantity-${product.id}`} className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity (kg)
-                  </label>
-                  <input
-                    type="number"
-                    id={`quantity-${product.id}`}
-                    min="1"
-                    max={product.quantity}
-                    value={quantities[product.id] || 1}
-                    onChange={(e) => handleQuantityChange(product.id, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                
-                {/* Seller Info */}
                 <div className="flex items-center justify-between mb-4">
                   <Link
                     to={`/farmers/${product.sellerId}`}
@@ -381,21 +463,54 @@ const Marketplace = () => {
                 {/* Action Buttons */}
                 {user ? (
                   <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleMessageSeller(product.sellerId)}
-                      className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors flex items-center justify-center"
-                    >
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                      Message
-                    </button>
-                    <button
-                      onClick={() => handleOrderNow(product)}
-                      className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors"
-                    >
-                      Order Now
-                    </button>
+                    {user.uid === product.sellerId ? (
+                      <>
+                        <button
+                          onClick={() => handleEditProduct(product.id)}
+                          className="flex-1 px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white text-sm rounded-md"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-sm rounded-md"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      role !== "farmer" && (
+                        <>
+                          <button
+                            onClick={() => handleMessageSeller(product.sellerId)}
+                            className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors flex items-center justify-center"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Message
+                          </button>
+                          <button
+                            onClick={() => handleAddToCart(product)}
+                            disabled={product.quantity <= 0}
+                            className={`flex-1 px-3 py-2 text-white text-sm rounded-md transition-colors ${
+                              product.quantity > 0 ? "bg-green-600 hover:bg-green-700" : "bg-gray-400 cursor-not-allowed"
+                            }`}
+                          >
+                            Add to Cart
+                          </button>
+                          <button
+                            onClick={() => handleOrderNow(product)}
+                            disabled={product.quantity <= 0}
+                            className={`flex-1 px-3 py-2 text-white text-sm rounded-md transition-colors ${
+                              product.quantity > 0 ? "bg-orange-600 hover:bg-orange-700" : "bg-gray-400 cursor-not-allowed"
+                            }`}
+                          >
+                            Buy Now
+                          </button>
+                        </>
+                      )
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-2">

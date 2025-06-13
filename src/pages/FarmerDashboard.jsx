@@ -20,6 +20,7 @@ const FarmerDashboard = () => {
 
   // Weather states
   const [weather, setWeather] = useState(null);
+  const [weatherForecast, setWeatherForecast] = useState([]);
   const [farmerLocation, setFarmerLocation] = useState("");
   const [loadingWeather, setLoadingWeather] = useState(true);
   const API_KEY = "967c8ce2410ebb26a3ba9b630f00e963";
@@ -36,6 +37,7 @@ const FarmerDashboard = () => {
   const [cameraOn, setCameraOn] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const streamRef = useRef(null);
 
   // Authentication and user data
   useEffect(() => {
@@ -93,12 +95,45 @@ const FarmerDashboard = () => {
         const locationName = locationData[0]?.name || "Your location";
         setFarmerLocation(locationName);
 
-        // Get weather
+        // Get current weather
         const weatherRes = await fetch(
           `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${API_KEY}`
         );
         const weatherData = await weatherRes.json();
         setWeather(weatherData);
+
+        // Get 5-day forecast (3-hour intervals)
+        const forecastRes = await fetch(
+          `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=metric&appid=${API_KEY}`
+        );
+        const forecastData = await forecastRes.json();
+        
+        // Process forecast to get daily data (next 2 days)
+        const dailyForecast = [];
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const dayAfter = new Date(tomorrow);
+        dayAfter.setDate(dayAfter.getDate() + 1);
+        
+        // Filter for noon forecasts (most representative of the day)
+        forecastData.list.forEach(item => {
+          const forecastDate = new Date(item.dt * 1000);
+          if (forecastDate.getHours() === 12 && 
+              (forecastDate.getDate() === tomorrow.getDate() || 
+               forecastDate.getDate() === dayAfter.getDate())) {
+            dailyForecast.push({
+              date: forecastDate,
+              temp: item.main.temp,
+              description: item.weather[0].description,
+              icon: item.weather[0].icon,
+              humidity: item.main.humidity,
+              wind: item.wind.speed
+            });
+          }
+        });
+        
+        setWeatherForecast(dailyForecast);
 
         // Update user location if logged in
         if (user?.uid) {
@@ -115,6 +150,26 @@ const FarmerDashboard = () => {
         const fallbackData = await fallbackRes.json();
         setWeather(fallbackData);
         setFarmerLocation("Abuja");
+        
+        // Mock forecast data for fallback
+        setWeatherForecast([
+          {
+            date: new Date(new Date().setDate(new Date().getDate() + 1)),
+            temp: 28,
+            description: "Partly cloudy",
+            icon: "03d",
+            humidity: 65,
+            wind: 3.5
+          },
+          {
+            date: new Date(new Date().setDate(new Date().getDate() + 2)),
+            temp: 30,
+            description: "Sunny",
+            icon: "01d",
+            humidity: 55,
+            wind: 2.8
+          }
+        ]);
       } finally {
         setLoadingWeather(false);
       }
@@ -128,7 +183,8 @@ const FarmerDashboard = () => {
     try {
       const q = query(
         collection(db, "products"),
-        where("sellerId", "==", userId)
+        where("sellerId", "==", userId),
+        orderBy("createdAt", "desc")
       );
       const snapshot = await getDocs(q);
       setProductCount(snapshot.size);
@@ -167,7 +223,7 @@ const FarmerDashboard = () => {
   const fetchIssues = async (uid) => {
     try {
       const q = query(
-        collection(db, "issues"),
+        collection(db, "reports"),
         where("userId", "==", uid),
         orderBy("timestamp", "desc")
       );
@@ -228,7 +284,7 @@ const FarmerDashboard = () => {
     try {
       const formData = new FormData();
       formData.append("images", imageFile);
-      formData.append("key", "	https://crop.kindwise.com/api/v1"); // Replace with your actual API key
+      formData.append("key", "YOUR_PLANT_ID_API_KEY"); // Replace with your actual API key
 
       const response = await fetch("https://api.plant.id/v2/identify", {
         method: "POST",
@@ -281,7 +337,7 @@ const FarmerDashboard = () => {
       setListening(false);
 
       try {
-        await addDoc(collection(db, "issues"), {
+        await addDoc(collection(db, "reports"), {
           message: spokenText,
           response: diagnosis,
           timestamp: new Date(),
@@ -356,7 +412,7 @@ const FarmerDashboard = () => {
       setImageResponse(aiAnalysis);
 
       // Save to database
-      await addDoc(collection(db, "issues"), {
+      await addDoc(collection(db, "reports"), {
         imageUrl: downloadURL,
         response: aiAnalysis,
         message: "Image diagnosis",
@@ -379,8 +435,15 @@ const FarmerDashboard = () => {
   // Camera functions
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: {
+          facingMode: 'environment', // Prefer rear camera for mobile
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
       videoRef.current.srcObject = stream;
+      streamRef.current = stream;
       setCameraOn(true);
     } catch (err) {
       console.error("Error accessing camera:", err);
@@ -389,9 +452,10 @@ const FarmerDashboard = () => {
   };
 
   const stopCamera = () => {
-    const stream = videoRef.current?.srcObject;
-    const tracks = stream?.getTracks();
-    tracks?.forEach((track) => track.stop());
+    if (streamRef.current) {
+      const tracks = streamRef.current.getTracks();
+      tracks.forEach(track => track.stop());
+    }
     setCameraOn(false);
   };
 
@@ -407,7 +471,7 @@ const FarmerDashboard = () => {
         const file = new File([blob], "captured_crop_image.jpg", { type: "image/jpeg" });
         setImageFile(file);
         stopCamera();
-      }, "image/jpeg");
+      }, "image/jpeg", 0.9); // 90% quality
     }
   };
 
@@ -426,32 +490,48 @@ const FarmerDashboard = () => {
     
     if (temp < 10) {
       advice.push("❄️ Too cold for most crops. Consider cold frames or greenhouses.");
+      advice.push("🌱 Delay planting of sensitive crops until temperatures rise.");
+      advice.push("💧 Reduce irrigation frequency to prevent waterlogging in cold soils.");
     } else if (temp > 35) {
       advice.push("🔥 Extreme heat may stress plants. Water early morning/late evening.");
+      advice.push("🌿 Provide shade for sensitive plants during peak heat hours.");
+      advice.push("💦 Increase watering frequency but avoid midday watering to reduce evaporation.");
     } else if (temp > 25) {
       advice.push("☀️ Warm weather good for most crops. Ensure adequate watering.");
+      advice.push("🌾 Ideal conditions for planting warm-season crops like maize and beans.");
+      advice.push("🕒 Water in early morning to maximize absorption and minimize evaporation.");
     } else {
       advice.push("🌡️ Moderate temperatures ideal for planting and growth.");
+      advice.push("🌻 Good conditions for most farming activities.");
     }
 
     if (conditions.includes("rain")) {
       if (description.includes("heavy") || description.includes("shower")) {
         advice.push("🌧️ Heavy rain expected. Avoid field work and protect young plants.");
+        advice.push("🚜 Postpone fertilizer application to prevent runoff.");
+        advice.push("🌱 Check drainage systems to prevent waterlogging.");
       } else {
         advice.push("🌦️ Light rain expected. Good for planting and natural irrigation.");
+        advice.push("🌿 Take advantage of moist soil for transplanting seedlings.");
       }
     } else if (conditions.includes("clear")) {
       advice.push("☀️ Clear skies. Ensure adequate irrigation for your crops.");
+      advice.push("🌱 Good day for harvesting and drying crops.");
     }
 
     if (windSpeed > 8) {
       advice.push("💨 High winds expected. Secure structures and protect delicate plants.");
+      advice.push("🌾 Avoid spraying pesticides or herbicides which may drift.");
+      advice.push("🌱 Stake young plants to prevent wind damage.");
     }
 
     if (humidity > 80) {
       advice.push("💧 High humidity may promote fungal diseases. Monitor crops closely.");
+      advice.push("🍄 Consider applying fungicide preventatively for susceptible crops.");
+      advice.push("🌱 Space plants adequately to improve air circulation.");
     } else if (humidity < 30) {
       advice.push("🏜️ Low humidity increases evaporation. Water more frequently.");
+      advice.push("🌿 Mulch around plants to retain soil moisture.");
     }
 
     return advice;
@@ -570,6 +650,90 @@ const FarmerDashboard = () => {
             ) : null}
           </div>
         </section>
+
+        {/* Weather Advisory Section */}
+        {weather && (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                <span className="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3">🌤️</span>
+                Weather Forecast (Next 2 Days)
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Current Weather */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-blue-800 mb-2">Today</h3>
+                  <div className="flex items-center mb-2">
+                    <img 
+                      src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}.png`} 
+                      alt="Weather icon"
+                      className="w-12 h-12"
+                    />
+                    <div className="ml-2">
+                      <p className="text-xl font-bold">{Math.round(weather.main.temp)}°C</p>
+                      <p className="capitalize">{weather.weather[0].description}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-gray-600">Humidity</p>
+                      <p>{weather.main.humidity}%</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Wind</p>
+                      <p>{weather.wind.speed} m/s</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Forecast Days */}
+                {weatherForecast.map((day, index) => (
+                  <div key={index} className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="font-medium text-blue-800 mb-2">
+                      {day.date.toLocaleDateString('en-US', { weekday: 'long' })}
+                    </h3>
+                    <div className="flex items-center mb-2">
+                      <img 
+                        src={`https://openweathermap.org/img/wn/${day.icon}.png`} 
+                        alt="Weather icon"
+                        className="w-12 h-12"
+                      />
+                      <div className="ml-2">
+                        <p className="text-xl font-bold">{Math.round(day.temp)}°C</p>
+                        <p className="capitalize">{day.description}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-gray-600">Humidity</p>
+                        <p>{day.humidity}%</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Wind</p>
+                        <p>{day.wind} m/s</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Farming Advice */}
+              <div className="mt-6">
+                <h3 className="font-medium text-green-800 mb-2">Farming Recommendations</h3>
+                <ul className="space-y-2">
+                  {getFarmingAdvice(weather).map((advice, index) => (
+                    <li key={index} className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>{advice}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Dashboard Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -855,6 +1019,7 @@ const FarmerDashboard = () => {
                 <video 
                   ref={videoRef} 
                   autoPlay 
+                  playsInline
                   className="w-full h-48 object-cover rounded-lg border border-gray-200"
                 />
                 
@@ -872,6 +1037,17 @@ const FarmerDashboard = () => {
                     Stop
                   </button>
                 </div>
+              </div>
+            )}
+            
+            {imageFile && (
+              <div className="mt-4 p-2 border border-gray-200 rounded-lg">
+                <p className="text-sm text-gray-600 mb-2">Selected image:</p>
+                <img 
+                  src={URL.createObjectURL(imageFile)} 
+                  alt="Preview" 
+                  className="w-full h-32 object-contain rounded"
+                />
               </div>
             )}
             
@@ -982,10 +1158,11 @@ const FarmerDashboard = () => {
             </div>
             <p className="font-medium text-gray-700">Orders</p>
           </Link>
-          <Link
-            to="/chat"
-            className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow text-center"
-          >
+          {/* Changed from /chat to /messages */}
+<Link
+  to="/messages"
+  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow text-center"
+>
             <div className="bg-purple-100 text-purple-600 p-3 rounded-full inline-block mb-2">
               <span className="text-xl">💬</span>
             </div>
