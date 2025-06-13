@@ -1,7 +1,6 @@
 // src/context/AuthContext.js
-
 import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -23,10 +22,15 @@ export const AuthProvider = ({ children }) => {
         setUser(firebaseUser);
 
         // Fetch role from Firestore
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          setRole(userDoc.data().role || null); // fallback to null if role is undefined
-        } else {
+        try {
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            setRole(userDoc.data().role || null);
+          } else {
+            setRole(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
           setRole(null);
         }
       } else {
@@ -40,8 +44,19 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
+  // Logout function
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      // State will be cleared by onAuthStateChanged listener
+    } catch (error) {
+      console.error("Error signing out:", error);
+      throw error; // Rethrow to handle in UI if needed
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, role, loading }}>
+    <AuthContext.Provider value={{ user, role, loading, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );
