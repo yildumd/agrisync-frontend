@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@firebase/firestore": "^4.7.17",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -10,7 +11,7 @@
     "axios": "^1.9.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
-    "firebase": "^11.7.1",
+    "firebase": "^11.9.1",
     "framer-motion": "^12.10.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

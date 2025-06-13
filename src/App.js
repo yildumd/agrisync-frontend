@@ -10,14 +10,15 @@ import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Marketplace from "./pages/Marketplace";
 import AddProduct from "./pages/AddProduct";
+import EditProduct from "./pages/EditProduct";
 import BuyerDashboard from "./pages/BuyerDashboard";
 import FarmerDashboard from "./pages/FarmerDashboard";
 import AdminPanel from "./components/AdminPanel";
 import Dashboard from "./pages/Dashboard";
 import OrdersPage from "./pages/OrdersPage";
-import ChatPage from "./pages/ChatPage";
-import ChatInbox from "./pages/ChatInbox";
-import LoadingSpinner from "./components/LoadingSpinner"; // Add this component
+import MessagesPage from "./pages/MessagesPage";
+import CartPage from "./components/CartPage";
+import LoadingSpinner from "./components/LoadingSpinner";
 
 const AppRoutes = () => {
   const { user, role, loading } = useAuth();
@@ -48,16 +49,16 @@ const AppRoutes = () => {
 
       {/* Public Routes */}
       <Route path="/register" element={<Register />} />
-      <Route path="/login" element={<Login />} />
       <Route 
-        path="/marketplace" 
-        element={<Marketplace />} 
+        path="/login" 
+        element={user ? <Navigate to="/" replace /> : <Login />} 
       />
+      <Route path="/marketplace" element={<Marketplace />} />
 
-      {/* Protected Routes */}
+      {/* Protected Routes - Only change is replacing "/login" with "/" in Navigate */}
       <Route 
         path="/dashboard" 
-        element={user ? <Dashboard /> : <Navigate to="/login" replace />} 
+        element={user ? <Dashboard /> : <Navigate to="/" replace />} 
       />
       <Route
         path="/dashboard/farmer"
@@ -65,7 +66,7 @@ const AppRoutes = () => {
           user && role === "farmer" ? (
             <FarmerDashboard />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         }
       />
@@ -75,7 +76,17 @@ const AppRoutes = () => {
           user && role === "farmer" ? (
             <AddProduct />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/edit-product/:productId"
+        element={
+          user && role === "farmer" ? (
+            <EditProduct />
+          ) : (
+            <Navigate to="/" replace />
           )
         }
       />
@@ -85,7 +96,7 @@ const AppRoutes = () => {
           user && role === "buyer" ? (
             <BuyerDashboard />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         }
       />
@@ -95,25 +106,29 @@ const AppRoutes = () => {
           user && role === "admin" ? (
             <AdminPanel />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         }
       />
 
-      {/* Orders */}
+      {/* Orders and Cart Routes */}
       <Route
-        path="/orders"
-        element={user ? <OrdersPage /> : <Navigate to="/login" replace />}
+        path="/orders/:productId?"
+        element={user ? <OrdersPage /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/cart"
+        element={user ? <CartPage /> : <Navigate to="/" replace />}
       />
 
-      {/* Chat Routes */}
+      {/* Messages Routes */}
       <Route
-        path="/inbox"
-        element={user ? <ChatInbox /> : <Navigate to="/login" replace />}
+        path="/messages/:userId"
+        element={user ? <MessagesPage /> : <Navigate to="/" replace />}
       />
       <Route
-        path="/chat/:chatId"
-        element={user ? <ChatPage /> : <Navigate to="/login" replace />}
+        path="/messages"
+        element={user ? <MessagesPage /> : <Navigate to="/" replace />}
       />
 
       {/* Other Routes */}
